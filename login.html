@@ -20,6 +20,13 @@ body{
   color:var(--ink);min-height:100vh;display:flex;flex-direction:column;align-items:center;
   justify-content:center;padding:24px;
 }
+.logo-chip{display:inline-flex;align-items:center;max-width:100%;box-sizing:border-box;
+  background:#F7F2E4;border-radius:16px;padding:16px 26px;margin-bottom:22px;box-shadow:0 10px 24px #0008}
+.logo-badge{display:block;height:52px;width:auto;max-width:100%}
+@media (max-width:360px){
+  .logo-chip{padding:12px 18px}
+  .logo-badge{height:36px}
+}
 .kicker{font:600 11px 'Spline Sans Mono',monospace;letter-spacing:.26em;color:var(--marigold);
   text-transform:uppercase;text-align:center}
 h1{font-family:'Bricolage Grotesque',serif;font-weight:700;font-size:clamp(28px,5vw,38px);
@@ -52,6 +59,7 @@ input:focus-visible{outline:2px solid var(--marigold);outline-offset:2px}
 </style>
 </head>
 <body>
+<div class="logo-chip"><img class="logo-badge" src="logo.svg" alt="Club Mahindra Resorts"></div>
 <div class="kicker">Club Mahindra Resorts</div>
 <h1>Guest Wayfinding Dashboard</h1>
 <div class="sub">Sign in to continue</div>
