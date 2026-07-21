@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign in · Club Mahindra Resorts</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700&family=Instrument+Sans:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#141F18; --panel:#1B2A20; --line:#2E4437;
+  --ink:#EDE7D6; --muted:#9DB3A4; --faint:#6E8577;
+  --marigold:#F2A93B; --marigold-deep:#D98A2B; --coral:#F08E7D;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:'Instrument Sans',system-ui,sans-serif;background:
+  radial-gradient(1100px 600px at 75% -10%, #1d2f24, var(--bg));
+  color:var(--ink);min-height:100vh;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;padding:24px;
+}
+.kicker{font:600 11px 'Spline Sans Mono',monospace;letter-spacing:.26em;color:var(--marigold);
+  text-transform:uppercase;text-align:center}
+h1{font-family:'Bricolage Grotesque',serif;font-weight:700;font-size:clamp(28px,5vw,38px);
+  letter-spacing:-.015em;margin:8px 0 6px;text-align:center}
+.sub{color:var(--muted);font-size:14.5px;text-align:center;margin-bottom:30px}
+.card{
+  width:100%;max-width:380px;background:var(--panel);border:1px solid var(--line);
+  border-radius:20px;padding:28px 26px;box-shadow:0 24px 60px #0007;
+}
+label{display:block;font:600 11px 'Spline Sans Mono',monospace;letter-spacing:.14em;
+  color:var(--muted);text-transform:uppercase;margin-bottom:8px}
+.field{margin-bottom:18px}
+input{
+  width:100%;background:#16241B;border:1px solid var(--line);color:var(--ink);
+  border-radius:13px;padding:13px 15px;font:500 15px 'Instrument Sans',sans-serif;
+}
+input:focus-visible{outline:2px solid var(--marigold);outline-offset:2px}
+.error{
+  font-size:13px;color:var(--coral);min-height:18px;margin-bottom:6px;text-align:center;
+}
+.signInBtn{
+  width:100%;border:none;border-radius:13px;padding:14px;cursor:pointer;
+  background:linear-gradient(135deg,var(--marigold),var(--marigold-deep));color:#241703;
+  font:600 15.5px 'Instrument Sans',sans-serif;margin-top:4px;
+}
+.signInBtn:hover{filter:brightness(1.06)}
+.signInBtn:active{transform:translateY(1px)}
+.note{margin-top:22px;color:var(--faint);font-size:12px;text-align:center;line-height:1.6}
+:focus-visible{outline:2px solid var(--marigold);outline-offset:2px}
+</style>
+</head>
+<body>
+<div class="kicker">Club Mahindra Resorts</div>
+<h1>Guest Wayfinding Dashboard</h1>
+<div class="sub">Sign in to continue</div>
+
+<form class="card" id="loginForm" novalidate>
+  <div class="error" id="err"></div>
+  <div class="field">
+    <label for="user">Username</label>
+    <input id="user" name="user" type="text" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" required>
+  </div>
+  <div class="field">
+    <label for="pass">Password</label>
+    <input id="pass" name="pass" type="password" autocomplete="current-password" required>
+  </div>
+  <button type="submit" class="signInBtn">Sign in →</button>
+</form>
+
+<div class="note">This is a local, single-file dashboard — sign-in is a simple gate,<br>not a secure login system.</div>
+
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+const params=new URLSearchParams(location.search);
+const next=params.get('next')||'index.html';
+
+$('loginForm').addEventListener('submit',e=>{
+  e.preventDefault();
+  const u=$('user').value.trim(), p=$('pass').value;
+  if(u==='admin'&&p==='admin123'){
+    localStorage.setItem('cmr_auth','1');
+    location.replace(next);
+  }else{
+    $('err').textContent='Incorrect username or password.';
+    $('pass').value='';
+    $('pass').focus();
+  }
+});
+</script>
+</body>
+</html>
