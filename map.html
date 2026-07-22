@@ -87,12 +87,32 @@ h1{font-family:'Bricolage Grotesque',serif;font-weight:700;font-size:29px;letter
 .modes button.on{background:#2A2013;border-color:var(--marigold);color:var(--marigold)}
 .locline{margin-top:10px;font-size:13px;color:var(--muted);display:flex;gap:8px;align-items:center;min-height:18px}
 .locline .dot{width:9px;height:9px;border-radius:50%;background:var(--me);flex:none;box-shadow:0 0 0 3px #4C9AFF33}
-.sel{width:100%;max-width:100%;appearance:none;background:#16241B url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%239DB3A4' stroke-width='1.6' fill='none'/%3E%3C/svg%3E") no-repeat right 13px center;
+.csel{position:relative;width:100%;margin-top:10px}
+.csel.hidden{display:none}
+.csel-trigger{
+  width:100%;max-width:100%;appearance:none;background:#16241B url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%239DB3A4' stroke-width='1.6' fill='none'/%3E%3C/svg%3E") no-repeat right 13px center;
   border:1px solid var(--line);color:var(--ink);border-radius:12px;padding:11px 34px 11px 13px;
-  font:500 14px 'Instrument Sans',sans-serif;cursor:pointer;margin-top:10px;
+  font:500 14px 'Instrument Sans',sans-serif;cursor:pointer;text-align:left;display:block;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.sel:focus-visible{outline:2px solid var(--marigold);outline-offset:2px}
-.sel.hidden{display:none}
+.csel-trigger .csel-value.placeholder{color:var(--muted)}
+.csel-trigger:disabled{opacity:.45;cursor:not-allowed}
+.csel-trigger:focus-visible{outline:2px solid var(--marigold);outline-offset:2px}
+.csel-trigger[aria-expanded="true"]{border-color:var(--marigold)}
+.csel-panel{
+  position:absolute;left:0;right:0;z-index:50;display:none;
+  background:#16241B;border:1px solid var(--line);border-radius:12px;
+  box-shadow:0 20px 50px #000a;overflow-y:auto;overscroll-behavior:contain;
+  scrollbar-width:thin;padding:6px}
+.csel-panel.open{display:block}
+.csel-group{
+  font:600 10px 'Spline Sans Mono',monospace;letter-spacing:.14em;color:var(--faint);
+  text-transform:uppercase;padding:9px 11px 5px}
+.csel-opt{
+  padding:9px 11px;border-radius:9px;font:500 13.5px 'Instrument Sans',sans-serif;
+  color:var(--ink);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.csel-opt:hover,.csel-opt.active{background:#2A2013;color:var(--marigold)}
+.csel-opt.selected{color:var(--marigold)}
+.csel-empty{padding:12px 11px;color:var(--faint);font-size:13px}
 #routeCard{display:none}
 #routeCard.show{display:block}
 .signpost{background:linear-gradient(135deg,var(--marigold),var(--marigold-deep));color:#241703;
@@ -192,11 +212,11 @@ main{flex:1;position:relative;overflow:hidden;background:radial-gradient(1200px 
   .brand{padding:18px 16px 12px}
   .section{padding:14px 16px}
   h1{font-size:24px}
-  .sel{font-size:13px;padding:10px 30px 10px 11px;background-position:right 11px center}
+  .csel-trigger{font-size:13px;padding:10px 30px 10px 11px;background-position:right 11px center}
   .modes button{font-size:12.5px;padding:7px 11px}
 }
 @media (max-width:340px){
-  .sel{font-size:12px}
+  .csel-trigger{font-size:12px}
 }
 </style>
 </head>
@@ -222,12 +242,22 @@ main{flex:1;position:relative;overflow:hidden;background:radial-gradient(1200px 
       <button type="button" data-mode="tap">Tap the map</button>
       <button type="button" data-mode="gps">Use GPS</button>
     </div>
-    <select id="originSel" class="sel hidden" aria-label="Landmark you are near"></select>
+    <div class="csel hidden" id="originField">
+      <button type="button" class="csel-trigger" id="originTrigger" aria-haspopup="listbox" aria-expanded="false" aria-label="Landmark you are near">
+        <span class="csel-value placeholder" id="originValue">Choose a landmark…</span>
+      </button>
+      <div class="csel-panel" id="originPanel" role="listbox" tabindex="-1" aria-label="Landmarks"></div>
+    </div>
     <div class="locline" id="locLine"><span style="color:var(--faint)">Location not set yet</span></div>
   </div>
   <div class="section">
     <div class="stephead"><span class="n">2</span><span class="t">Where do you want to go?</span></div>
-    <select id="destSel" class="sel" aria-label="Destination"></select>
+    <div class="csel" id="destField">
+      <button type="button" class="csel-trigger" id="destTrigger" aria-haspopup="listbox" aria-expanded="false" aria-label="Destination">
+        <span class="csel-value placeholder" id="destValue">Choose a destination…</span>
+      </button>
+      <div class="csel-panel" id="destPanel" role="listbox" tabindex="-1" aria-label="Destinations"></div>
+    </div>
   </div>
   <div class="section" id="routeCard">
     <div class="signpost">
@@ -675,7 +705,7 @@ function openChip(p,cx,cy){
 function closeChip(){chip.style.display='none';chipPoi=null;}
 chip.querySelector('.x').onclick=closeChip;
 $('chipHere').onclick=()=>{if(chipPoi)setOriginPoi(chipPoi.id);closeChip();};
-$('chipGo').onclick=()=>{if(chipPoi){$('destSel').value=chipPoi.id;setDest(chipPoi.id);}closeChip();};
+$('chipGo').onclick=()=>{if(chipPoi){destSelect.setValue(chipPoi.id);setDest(chipPoi.id);}closeChip();};
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeChip();});
 
 markG.addEventListener('click',e=>{
@@ -863,7 +893,7 @@ function renderRouteCard(){
 $('pillA').onclick=()=>{if(routes){activeRoute='A';drawRoutes();renderRouteCard();fitToActive();window.__sync3D&&window.__sync3D(true);}};
 $('pillB').onclick=()=>{if(routes&&routes.B){activeRoute='B';drawRoutes();renderRouteCard();fitToActive();window.__sync3D&&window.__sync3D(true);}};
 $('clearBtn').onclick=()=>{
-  routes=null;destId=null;$('destSel').value='';
+  routes=null;destId=null;destSelect.reset('Choose a destination…');
   routeG.innerHTML='';destRing.setAttribute('visibility','hidden');
   $('routeCard').classList.remove('show');window.__sync3D&&window.__sync3D(false);
 };
@@ -877,7 +907,7 @@ function setLocLine(label){
 function setOriginPoi(id){
   const p=POIS.find(q=>q.id===id);if(!p)return;
   origin={gnode:gnodeOf(p),pt:poiPt(p),label:p.name,snap:null};
-  if($('originSel').value!==id)$('originSel').value=id;
+  if(originSelect.value!==id)originSelect.setValue(id);
   showMe(origin.pt);setLocLine(p.name);computeRoutes();
 }
 function nearestPoiName(pt){
@@ -908,7 +938,7 @@ const modeBtns=[...document.querySelectorAll('#modes button')];
 function setMode(m){
   mode=m;
   modeBtns.forEach(b=>b.classList.toggle('on',b.dataset.mode===m));
-  $('originSel').classList.toggle('hidden',m!=='landmark');
+  $('originField').classList.toggle('hidden',m!=='landmark');
   if(m==='tap')toast('Tap your position on the map.');
   if(m==='gps')startGPS();
 }
@@ -924,23 +954,125 @@ svg.addEventListener('click',e=>{
   setOriginPoint(w,'Tap');
 });
 
-/* selects */
-function fillSelect(sel,placeholder){
-  sel.innerHTML='';
-  const o0=document.createElement('option');o0.value='';o0.textContent=placeholder;sel.appendChild(o0);
-  for(const [gname,ids] of GROUPS){
-    const og=document.createElement('optgroup');og.label=gname;
-    for(const id of ids){
-      const p=POIS.find(q=>q.id===id);if(!p)continue;
-      const o=document.createElement('option');o.value=id;o.textContent=p.name;o.title=p.name;og.appendChild(o);
+/* selects — custom-built dropdown so the popup always fits the viewport
+   (a native <select>'s list is drawn by the browser/OS and can't be
+   sized or positioned reliably from CSS, which was clipping on some devices) */
+function makeCustomSelect({trigger,valueEl,panel,placeholder,onChange}){
+  let groups=[], flatOptions=[], activeIndex=-1, selectedValue='';
+
+  function render(){
+    panel.innerHTML='';
+    flatOptions=[];
+    if(!groups.some(([,items])=>items.length)){
+      const e=document.createElement('div');e.className='csel-empty';e.textContent='Nothing to choose yet';
+      panel.appendChild(e);return;
     }
-    sel.appendChild(og);
+    for(const [label,items] of groups){
+      if(!items.length)continue;
+      if(label){
+        const g=document.createElement('div');g.className='csel-group';g.textContent=label;
+        panel.appendChild(g);
+      }
+      for(const item of items){
+        const o=document.createElement('div');
+        o.className='csel-opt';o.setAttribute('role','option');
+        o.id=panel.id+'-opt-'+flatOptions.length;
+        o.textContent=item.label;
+        if(item.value===selectedValue)o.classList.add('selected');
+        panel.appendChild(o);
+        flatOptions.push({...item,el:o});
+      }
+    }
   }
-  sel.title=sel.selectedOptions[0]?sel.selectedOptions[0].textContent:'';
-  sel.addEventListener('change',()=>{sel.title=sel.selectedOptions[0]?sel.selectedOptions[0].textContent:'';});
+  function setGroups(g){groups=g;render();}
+  function positionPanel(){
+    panel.style.top='';panel.style.bottom='';panel.style.maxHeight='';panel.style.marginTop='';panel.style.marginBottom='';
+    const rect=trigger.getBoundingClientRect();
+    const spaceBelow=window.innerHeight-rect.bottom-12, spaceAbove=rect.top-12;
+    if(spaceBelow>=180||spaceBelow>=spaceAbove){
+      panel.style.top='100%';panel.style.marginTop='6px';
+      panel.style.maxHeight=Math.max(140,Math.min(320,spaceBelow))+'px';
+    }else{
+      panel.style.bottom='100%';panel.style.marginBottom='6px';
+      panel.style.maxHeight=Math.max(140,Math.min(320,spaceAbove))+'px';
+    }
+  }
+  function setActive(i){
+    if(activeIndex>=0&&flatOptions[activeIndex])flatOptions[activeIndex].el.classList.remove('active');
+    activeIndex=i;
+    const o=flatOptions[activeIndex];
+    if(o){o.el.classList.add('active');o.el.scrollIntoView({block:'nearest'});panel.setAttribute('aria-activedescendant',o.el.id);}
+  }
+  function onDocClick(e){if(!trigger.contains(e.target)&&!panel.contains(e.target))close();}
+  function onKeydown(e){
+    if(e.key==='Escape'){close();trigger.focus();}
+    else if(e.key==='ArrowDown'){e.preventDefault();setActive(Math.min(flatOptions.length-1,activeIndex+1));}
+    else if(e.key==='ArrowUp'){e.preventDefault();setActive(Math.max(0,activeIndex-1));}
+    else if(e.key==='Enter'||e.key===' '){e.preventDefault();if(activeIndex>=0)selectIndex(activeIndex);}
+    else if(e.key==='Home'){e.preventDefault();setActive(0);}
+    else if(e.key==='End'){e.preventDefault();setActive(flatOptions.length-1);}
+  }
+  function open(){
+    if(trigger.disabled||!flatOptions.length)return;
+    panel.classList.add('open');trigger.setAttribute('aria-expanded','true');
+    positionPanel();
+    const idx=flatOptions.findIndex(o=>o.value===selectedValue);
+    setActive(idx>=0?idx:0);
+    document.addEventListener('click',onDocClick);
+    document.addEventListener('keydown',onKeydown);
+  }
+  function close(){
+    panel.classList.remove('open');trigger.setAttribute('aria-expanded','false');
+    document.removeEventListener('click',onDocClick);
+    document.removeEventListener('keydown',onKeydown);
+  }
+  function selectIndex(i){
+    const o=flatOptions[i];if(!o)return;
+    selectedValue=o.value;
+    valueEl.textContent=o.label;valueEl.classList.remove('placeholder');
+    flatOptions.forEach(x=>x.el.classList.remove('selected'));o.el.classList.add('selected');
+    close();trigger.focus();
+    onChange(o.value,o);
+  }
+  panel.addEventListener('click',e=>{
+    const o=e.target.closest('.csel-opt');if(!o)return;
+    const idx=flatOptions.findIndex(x=>x.el===o);if(idx>=0)selectIndex(idx);
+  });
+  trigger.addEventListener('click',()=>{panel.classList.contains('open')?close():open();});
+  window.addEventListener('resize',()=>{if(panel.classList.contains('open'))positionPanel();});
+
+  return {
+    setGroups,
+    reset(ph){
+      selectedValue='';valueEl.textContent=ph||placeholder;valueEl.classList.add('placeholder');
+      flatOptions.forEach(x=>x.el.classList.remove('selected'));
+    },
+    setDisabled(d){trigger.disabled=d;},
+    setValue(v){
+      selectedValue=v;
+      const o=flatOptions.find(x=>x.value===v);
+      if(o){valueEl.textContent=o.label;valueEl.classList.remove('placeholder');}
+      flatOptions.forEach(x=>x.el.classList.toggle('selected',x.value===v));
+    },
+    get value(){return selectedValue;}
+  };
 }
-$('originSel').addEventListener('change',e=>{if(e.target.value)setOriginPoi(e.target.value);});
-$('destSel').addEventListener('change',e=>setDest(e.target.value));
+function groupsFromGROUPS(){
+  return GROUPS.map(([gname,ids])=>[
+    gname,
+    ids.map(id=>POIS.find(q=>q.id===id)).filter(Boolean).map(p=>({value:p.id,label:p.name}))
+  ]);
+}
+const originSelect=makeCustomSelect({
+  trigger:$('originTrigger'),valueEl:$('originValue'),panel:$('originPanel'),
+  placeholder:'Choose a landmark…',
+  onChange:id=>{if(id)setOriginPoi(id);}
+});
+const destSelect=makeCustomSelect({
+  trigger:$('destTrigger'),valueEl:$('destValue'),panel:$('destPanel'),
+  placeholder:'Choose a destination…',
+  onChange:id=>setDest(id)
+});
 
 /* ═══════════ GPS (optional, needs CONFIG setup) ═══════════ */
 let gpsWatch=null, gpsFit=null;
@@ -1022,8 +1154,8 @@ if(typeof RESORT_META!=='undefined'){
   listEl.innerHTML=list||'<div class="nearsub" style="margin:0">A hand-picked list is being added for this resort — use the button below to explore what\'s around it.</div>';
   $('nearMore').innerHTML=nbMoreHTML(origin);
 })();
-fillSelect($('originSel'),'Choose a landmark…');
-fillSelect($('destSel'),'Choose a destination…');
+originSelect.setGroups(groupsFromGROUPS());
+destSelect.setGroups(groupsFromGROUPS());
 setMode('landmark');
 applyView();
 if(window.innerWidth<=880){const F=D.mobileFit||[120,60,1140,820];fitBox(F[0],F[1],F[2],F[3],30);}
