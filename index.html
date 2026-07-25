@@ -142,17 +142,17 @@ h1{font-family:'Bricolage Grotesque',serif;font-weight:700;font-size:clamp(34px,
   <div class="sub">Choose your state, pick your resort, and open its map.</div>
   <div class="stats">
     <span class="stat"><b id="stResorts">–</b>&nbsp;resorts</span>
-    <span class="stat"><b id="stStates">–</b>&nbsp;states &amp; countries</span>
+    <span class="stat"><b id="stStates">–</b>&nbsp;states</span>
   </div>
 </header>
 
 <section class="finder">
-  <div class="stephead"><span class="n">1</span><span class="t">Select state / country</span></div>
+  <div class="stephead"><span class="n">1</span><span class="t">Select state</span></div>
   <div class="csel" id="stateField">
-    <button type="button" class="csel-trigger" id="stateTrigger" aria-haspopup="listbox" aria-expanded="false" aria-label="Select state or country">
-      <span class="csel-value placeholder" id="stateValue">Choose a state or country…</span>
+    <button type="button" class="csel-trigger" id="stateTrigger" aria-haspopup="listbox" aria-expanded="false" aria-label="Select state">
+      <span class="csel-value placeholder" id="stateValue">Choose a state…</span>
     </button>
-    <div class="csel-panel" id="statePanel" role="listbox" tabindex="-1" aria-label="States and countries"></div>
+    <div class="csel-panel" id="statePanel" role="listbox" tabindex="-1" aria-label="States"></div>
   </div>
 
   <div class="stephead"><span class="n">2</span><span class="t">Select resort</span></div>
@@ -276,10 +276,10 @@ function makeCustomSelect({trigger,valueEl,panel,placeholder,onChange}){
   };
 }
 
-/* state dropdown, India first then International */
+/* state dropdown — India only */
 const stateSelect=makeCustomSelect({
   trigger:$('stateTrigger'),valueEl:$('stateValue'),panel:$('statePanel'),
-  placeholder:'Choose a state or country…',
+  placeholder:'Choose a state…',
   onChange:st=>{
     resortSelect.reset('First choose a state…');
     resortSelect.setDisabled(false);
@@ -289,14 +289,8 @@ const stateSelect=makeCustomSelect({
     resortSelect.reset('Choose a resort…');
   }
 });
-const indiaItems=[],intlItems=[];
-let intl=false;
-for(const s of states){
-  if(s===INTL_START)intl=true;
-  const item={value:s,label:`${s} (${RESORTS.filter(r=>r.state===s).length})`};
-  (intl?intlItems:indiaItems).push(item);
-}
-stateSelect.setGroups([['India',indiaItems],['International',intlItems]]);
+const stateItems=states.map(s=>({value:s,label:`${s} (${RESORTS.filter(r=>r.state===s).length})`}));
+stateSelect.setGroups([[null,stateItems]]);
 
 const btn=$('openBtn'), note=$('mapnote');
 const resortSelect=makeCustomSelect({

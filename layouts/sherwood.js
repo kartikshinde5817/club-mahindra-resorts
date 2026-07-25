@@ -20,11 +20,11 @@ const CONFIG = {
   metersPerUnit: 0.406,          // calibrated: boundary = 8 acres
   walkMetersPerMinute: 60,       // hill property — slightly slower
   gps: {
-    enabled: false,              // needs a 2nd on-site coordinate — see note
+    enabled: true,               // 1 real point → approximate GPS; add the 2nd for exact
     refs: [
       // Real Google Maps coordinate of the resort (main entrance/porch):
       { id:'reception', lat: 17.9120059, lng: 73.6740673 },
-      // On site: right-click the POOL on Google Maps, paste here, set enabled:true
+      // For EXACT GPS: right-click the POOL on Google Maps, paste real coords here.
       { id:'pool',      lat: 0.000000,  lng: 0.000000 }
     ]
   }

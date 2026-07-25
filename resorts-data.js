@@ -136,36 +136,16 @@ const RESORTS = [
   {id:'kaziranga',  name:'Summit Green Lake Tea Resort, Kaziranga',  state:'Assam', q:'Summit Green Lake Tea Resort Kaziranga'},
 
   /* ── Bihar ── */
-  {id:'bodhgaya',   name:'Marasa Sarovar Premiere, Bodh Gaya',       state:'Bihar', q:'Marasa Sarovar Premiere Bodhgaya'},
-
-  /* ── International ── */
-  {id:'dubai',      name:'Club Mahindra Arabian Dreams, Dubai',      state:'UAE (Dubai)', q:'Club Mahindra Arabian Dreams Dubai'},
-  {id:'kathmandu',  name:'Kathmandu, Nepal (new)',                   state:'Nepal', q:'Club Mahindra Kathmandu Nepal'},
-  {id:'phuket',     name:'Phuket, Thailand (new)',                   state:'Thailand', q:'Club Mahindra Phuket Thailand'},
-  {id:'tbilisi',    name:'Royal Tulip Hotel & Casino, Tbilisi',      state:'Georgia', q:'Royal Tulip Hotel Casino Tbilisi'},
-  {id:'caribia',    name:'Holiday Club Turun Caribia, Turku',        state:'Finland', q:'Holiday Club Caribia Turku'},
-  {id:'katinkulta', name:'Holiday Club Katinkulta',                  state:'Finland', q:'Holiday Club Katinkulta Vuokatti'},
-  {id:'kuusamon',   name:'Holiday Club Kuusamon Tropiikki',          state:'Finland', q:'Holiday Club Kuusamon Tropiikki'},
-  {id:'saariselka', name:'Holiday Club Saariselkä',                  state:'Finland', q:'Holiday Club Saariselka'},
-  {id:'saimaa',     name:'Holiday Club Saimaan Rauha',               state:'Finland', q:'Holiday Club Saimaa'},
-  {id:'tampere',    name:'Holiday Club Tampereen Kehräämo',          state:'Finland', q:'Holiday Club Tampereen Kehraamo'},
-  {id:'vierumaki',  name:'Holiday Club Vierumäki',                   state:'Finland', q:'Holiday Club Vierumaki'},
-  {id:'are',        name:'Holiday Club Åre',                         state:'Sweden', q:'Holiday Club Are Sweden'},
-  {id:'vista',      name:'Holiday Club Vista Amadores',              state:'Spain', q:'Holiday Club Vista Amadores Gran Canaria'},
-  {id:'jardin',     name:'Holiday Club Jardin Amadores',             state:'Spain', q:'Holiday Club Jardin Amadores Gran Canaria'},
-  {id:'puertocalma',name:'Holiday Club Puerto Calma',                state:'Spain', q:'Holiday Club Puerto Calma Gran Canaria'},
-  {id:'solamadores',name:'Holiday Club Sol Amadores',                state:'Spain', q:'Holiday Club Sol Amadores Gran Canaria'}
+  {id:'bodhgaya',   name:'Marasa Sarovar Premiere, Bodh Gaya',       state:'Bihar', q:'Marasa Sarovar Premiere Bodhgaya'}
 ];
 
-/* Order of the state dropdown: Indian states first, then international */
+/* Order of the state dropdown — India only */
 const STATE_ORDER = [
   'Maharashtra','Goa','Kerala','Karnataka','Tamil Nadu','Puducherry',
   'Andhra Pradesh','Andaman & Nicobar','Lakshadweep','Gujarat','Rajasthan',
   'Madhya Pradesh','Daman & Diu','Himachal Pradesh','Uttarakhand',
-  'Jammu & Kashmir','Uttar Pradesh','Punjab','Sikkim','Assam','Bihar',
-  'UAE (Dubai)','Nepal','Thailand','Georgia','Finland','Sweden','Spain'
+  'Jammu & Kashmir','Uttar Pradesh','Punjab','Sikkim','Assam','Bihar'
 ];
-const INTL_START = 'UAE (Dubai)';
 
 /* ═══════════════════════════════════════════════════════════════
    NEARBY PLACES TO VISIT (within ~100 km of each resort)
@@ -308,23 +288,5 @@ const NEARBY = {
   kaziranga:[{name:"Kaziranga National Park",km:5},{name:"Tea Gardens, Kaziranga",km:5},{name:"Kaziranga Orchid Park",km:8},{name:"Kakochang Waterfall",km:25},{name:"Hoollongapar Gibbon Sanctuary",km:40}],
 
   /* ── Bihar ── */
-  bodhgaya:[{name:"Mahabodhi Temple, Bodh Gaya",km:2},{name:"Great Buddha Statue, Bodh Gaya",km:2},{name:"Bodhi Tree, Bodh Gaya",km:2},{name:"Dungeshwari Caves",km:12},{name:"Vishnupad Temple, Gaya",km:16},{name:"Barabar Caves",km:45}],
-
-  /* ── International ── */
-  dubai:[{name:"Burj Khalifa & Dubai Mall",km:15},{name:"Palm Jumeirah",km:20},{name:"Dubai Marina",km:25},{name:"Miracle Garden, Dubai",km:28},{name:"Global Village, Dubai",km:30},{name:"Desert Safari, Dubai",km:40}],
-  kathmandu:[{name:"Kathmandu Durbar Square",km:4},{name:"Swayambhunath (Monkey Temple)",km:5},{name:"Pashupatinath Temple",km:6},{name:"Boudhanath Stupa",km:7},{name:"Patan Durbar Square",km:8},{name:"Bhaktapur Durbar Square",km:15},{name:"Nagarkot",km:30}],
-  phuket:[{name:"Old Phuket Town",km:10},{name:"Karon Beach",km:12},{name:"Patong Beach",km:15},{name:"Bangla Road, Patong",km:15},{name:"Big Buddha, Phuket",km:18},{name:"Promthep Cape",km:25}],
-  tbilisi:[{name:"Old Town Tbilisi",km:2},{name:"Bridge of Peace, Tbilisi",km:2},{name:"Narikala Fortress",km:3},{name:"Holy Trinity Cathedral (Sameba)",km:3},{name:"Mtatsminda Park",km:5},{name:"Mtskheta",km:22},{name:"Jvari Monastery",km:25}],
-  caribia:[{name:"Turku Cathedral",km:2},{name:"Aura River, Turku",km:2},{name:"Luostarinmaki Handicrafts Museum",km:3},{name:"Turku Castle",km:5},{name:"Naantali Old Town",km:17},{name:"Moominworld, Naantali",km:17}],
-  katinkulta:[{name:"Vuokatti Ski Resort",km:3},{name:"Sotkamo",km:10},{name:"Kajaani",km:35}],
-  kuusamon:[{name:"Kuusamo",km:2},{name:"Ruka Ski Resort",km:28},{name:"Oulanka National Park",km:55},{name:"Riisitunturi National Park",km:60}],
-  saariselka:[{name:"Saariselka Ski Resort",km:2},{name:"Kaunispaa Hill",km:3},{name:"Urho Kekkonen National Park",km:5},{name:"Tankavaara Gold Village",km:30},{name:"Inari",km:40}],
-  saimaa:[{name:"Lake Saimaa",km:1},{name:"Imatra",km:30},{name:"Lappeenranta",km:30},{name:"Imatrankoski Rapids",km:32}],
-  tampere:[{name:"Tampere Cathedral",km:1},{name:"Moomin Museum, Tampere",km:1},{name:"Sarkanniemi Amusement Park",km:3},{name:"Nasinneula Observation Tower",km:3},{name:"Pyynikki Observation Tower",km:3}],
-  vierumaki:[{name:"Vierumaki Sports Institute",km:1},{name:"Heinola",km:18},{name:"Messila Ski Resort",km:30},{name:"Lahti",km:35}],
-  are:[{name:"Are Ski Resort",km:2},{name:"Areskutan Mountain",km:3},{name:"Duved",km:8},{name:"Tannforsen Waterfall",km:25}],
-  vista:[{name:"Amadores Beach",km:2},{name:"Puerto Rico Beach, Gran Canaria",km:3},{name:"Anfi Beach",km:5},{name:"Puerto de Mogan",km:8},{name:"Maspalomas Dunes",km:30}],
-  jardin:[{name:"Amadores Beach",km:2},{name:"Puerto Rico Beach, Gran Canaria",km:3},{name:"Anfi Beach",km:5},{name:"Puerto de Mogan",km:8},{name:"Maspalomas Dunes",km:30}],
-  puertocalma:[{name:"Amadores Beach",km:2},{name:"Puerto Rico Beach, Gran Canaria",km:3},{name:"Anfi Beach",km:5},{name:"Puerto de Mogan",km:8},{name:"Maspalomas Dunes",km:30}],
-  solamadores:[{name:"Amadores Beach",km:2},{name:"Puerto Rico Beach, Gran Canaria",km:3},{name:"Anfi Beach",km:5},{name:"Puerto de Mogan",km:8},{name:"Maspalomas Dunes",km:30}]
+  bodhgaya:[{name:"Mahabodhi Temple, Bodh Gaya",km:2},{name:"Great Buddha Statue, Bodh Gaya",km:2},{name:"Bodhi Tree, Bodh Gaya",km:2},{name:"Dungeshwari Caves",km:12},{name:"Vishnupad Temple, Gaya",km:16},{name:"Barabar Caves",km:45}]
 };

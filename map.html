@@ -47,7 +47,7 @@
 :root{
   --bg:#141F18; --panel:#1B2A20; --line:#2E4437;
   --ink:#EDE7D6; --muted:#9DB3A4; --faint:#6E8577;
-  --marigold:#F2A93B; --marigold-deep:#D98A2B; --alt:#7FB3D5;
+  --marigold:#F2A93B; --marigold-deep:#D98A2B; --alt:#9AA7B4; --route:#4285F4;
   --sand:#E3D6B7; --sand-dim:#CBBD9C; --roof:#D98A4B; --roof-dark:#B06A33;
   --me:#4C9AFF; --mint:#7FD1AE; --coral:#F08E7D; --sage:#A8C686;
 }
@@ -129,21 +129,26 @@ h1{font-family:'Bricolage Grotesque',serif;font-weight:700;font-size:29px;letter
 .routePills button .rp2{font:500 11.5px 'Spline Sans Mono',monospace;color:var(--muted);margin-top:2px}
 .routePills button .sw{width:14px;height:4px;border-radius:2px}
 .routePills button.on{border-color:var(--marigold)}
-.routePills button.on .sw{background:var(--marigold)}
+.routePills button.on .sw{background:var(--route)}
 .routePills button:not(.on) .sw{background:var(--alt)}
 .routePills button:hover{border-color:var(--marigold)}
 .steps{list-style:none;margin-top:2px}
 .steps li{position:relative;padding:0 0 14px 26px;font-size:13.5px;color:var(--ink)}
 .steps li .m{font:500 11.5px 'Spline Sans Mono',monospace;color:var(--faint);margin-left:6px}
 .steps li::before{content:"";position:absolute;left:5px;top:5px;width:9px;height:9px;border-radius:50%;
-  border:2px solid var(--marigold);background:var(--panel)}
+  border:2px solid #EA4335;background:#EA4335;transition:background .3s ease,border-color .3s ease}
 .steps li::after{content:"";position:absolute;left:9px;top:18px;bottom:-2px;width:1.5px;background:var(--line)}
 .steps li:last-child::after{display:none}
-.steps li:first-child::before{background:var(--me);border-color:var(--me)}
-.steps li:last-child::before{background:var(--marigold)}
-.ghost{width:100%;margin-top:6px;background:none;border:1px solid var(--line);color:var(--muted);
-  padding:10px;border-radius:12px;font:500 13px 'Instrument Sans',sans-serif;cursor:pointer}
-.ghost:hover{border-color:var(--coral);color:var(--coral)}
+.steps li.passed::before{background:#34A853;border-color:#34A853}
+/* journey flow: pick mode → Start → live route → Exit */
+#journeySetup,#journeyLive{display:none}
+#routeCard.setup #journeySetup{display:block}
+#routeCard.live #journeyLive{display:block}
+.startBtn{width:100%;margin-top:12px;border:none;border-radius:12px;padding:12.5px;cursor:pointer;
+  background:linear-gradient(135deg,var(--marigold),var(--marigold-deep));color:#241703;
+  font:600 14.5px 'Instrument Sans',sans-serif}
+.startBtn:hover:not(:disabled){filter:brightness(1.06)}
+.startBtn:disabled{opacity:.5;cursor:not-allowed}
 main{flex:1;position:relative;overflow:hidden;background:radial-gradient(1200px 700px at 70% 30%, #182620, var(--bg))}
 #map{width:100%;height:100%;display:block;cursor:grab;touch-action:none}
 #map.grabbing{cursor:grabbing}
@@ -185,7 +190,6 @@ main{flex:1;position:relative;overflow:hidden;background:radial-gradient(1200px 
 @keyframes spin{to{transform:rotate(360deg)}}
 .pulse{animation:pulse 1.6s ease-in-out infinite}
 #routeMain{animation:march 1.1s linear infinite}
-#destRing{animation:spin 9s linear infinite;transform-box:fill-box;transform-origin:center}
 :focus-visible{outline:2px solid var(--marigold);outline-offset:2px}
 /* nearby places to visit */
 .nearsub{font-size:11.5px;color:var(--faint);margin:-3px 0 11px;line-height:1.45}
@@ -201,7 +205,7 @@ main{flex:1;position:relative;overflow:hidden;background:radial-gradient(1200px 
   border:1px dashed var(--line);border-radius:12px;padding:10px;color:var(--muted);
   font:500 12.5px 'Instrument Sans',sans-serif;transition:.15s}
 .nearmore a:hover{border-color:var(--marigold);color:var(--marigold)}
-@media (prefers-reduced-motion: reduce){.pulse,#routeMain,#destRing{animation:none}}
+@media (prefers-reduced-motion: reduce){.pulse,#routeMain{animation:none}}
 @media (max-width:880px){
   body{flex-direction:column;overflow:auto}
   main{height:56vh;flex:none;order:0}
@@ -265,12 +269,22 @@ main{flex:1;position:relative;overflow:hidden;background:radial-gradient(1200px 
       <div class="name" id="rName">—</div>
       <div class="meta" id="rMeta">—</div>
     </div>
-    <div class="routePills" id="routePills">
-      <button type="button" id="pillA"><span class="rp1"><span class="sw"></span><span id="pillAt">Route 1</span></span><span class="rp2" id="pillAm">—</span></button>
-      <button type="button" id="pillB"><span class="rp1"><span class="sw"></span><span id="pillBt">Route 2</span></span><span class="rp2" id="pillBm">—</span></button>
+    <div id="journeySetup">
+      <div class="stephead" style="margin-top:4px"><span class="n">3</span><span class="t">How will you go?</span></div>
+      <div class="modes" id="travelModes">
+        <button type="button" data-tmode="walk" class="on">🚶 Walkway</button>
+        <button type="button" data-tmode="vehicle">🚗 Car / Bike</button>
+      </div>
+      <button class="startBtn" id="startBtn">Start</button>
     </div>
-    <ol class="steps" id="steps"></ol>
-    <button class="ghost" id="clearBtn">Clear route</button>
+    <div id="journeyLive">
+      <div class="routePills" id="routePills">
+        <button type="button" id="pillA"><span class="rp1"><span class="sw"></span><span id="pillAt">Route 1</span></span><span class="rp2" id="pillAm">—</span></button>
+        <button type="button" id="pillB"><span class="rp1"><span class="sw"></span><span id="pillBt">Route 2</span></span><span class="rp2" id="pillBm">—</span></button>
+      </div>
+      <ol class="steps" id="steps"></ol>
+    </div>
+    <button class="startBtn" id="exitBtn" style="margin-top:10px">Exit</button>
   </div>
   <div class="section" id="nearbyCard">
     <div class="stephead"><span class="n">★</span><span class="t">Nearby places to visit</span></div>
@@ -290,7 +304,7 @@ main{flex:1;position:relative;overflow:hidden;background:radial-gradient(1200px 
   </div>
   <div class="legend" id="legend">
     <div class="li"><span class="sw" style="background:var(--me)"></span>You are here</div>
-    <div class="li"><span class="sw line" style="background:var(--marigold)"></span>Your route</div>
+    <div class="li"><span class="sw line" style="background:var(--route)"></span>Your route</div>
     <div class="li"><span class="sw line" style="background:var(--alt)"></span>Other way</div>
     <div class="li"><span class="sw" style="background:var(--marigold)"></span>Room blocks</div>
     <div class="li"><span class="sw" style="background:var(--coral)"></span>Dining</div>
@@ -605,8 +619,14 @@ for(const p of POIS){
 
 /* destination ring + me dot (top layer) */
 const gTop=el('g',{},world);
-const destRing=el('circle',{id:'destRing',r:15,fill:'none',stroke:'var(--marigold)','stroke-width':3,'stroke-dasharray':'6 5',visibility:'hidden'},gTop);
+/* destination: Google Maps–style red pin, tip anchored at the POI point */
+const destPin=el('g',{id:'destPin',visibility:'hidden'},gTop);
+el('ellipse',{cx:0,cy:1.4,rx:5.5,ry:2.2,fill:'#000',opacity:.35},destPin);
+el('path',{d:'M0 0 C -2.4 -6.5 -10.5 -10.5 -10.5 -19.5 A 10.5 10.5 0 1 1 10.5 -19.5 C 10.5 -10.5 2.4 -6.5 0 0 Z',
+  fill:'#EA4335',stroke:'#B31412','stroke-width':1.1},destPin);
+el('circle',{cx:0,cy:-19.5,r:3.6,fill:'#B31412'},destPin);
 const meG=el('g',{visibility:'hidden'},gTop);
+const meAcc=el('circle',{r:0,fill:'var(--me)',opacity:.12,stroke:'var(--me)','stroke-width':1,'stroke-opacity':.3},meG);
 el('circle',{r:13,fill:'var(--me)',opacity:.22,class:'pulse'},meG);
 el('circle',{r:5.2,fill:'var(--me)',stroke:'#EAF3FF','stroke-width':2},meG);
 
@@ -798,8 +818,11 @@ function dijkstra(adj,src,dst,penal){
 
 /* ═══════════ ROUTES (primary + alternative) ═══════════ */
 let origin=null, destId=null, routes=null, activeRoute='A';
+let travelMode='walk', journeyOn=false;
 const fmtM=u=>Math.round(u*CONFIG.metersPerUnit/5)*5;
-const fmtMin=u=>Math.max(1,Math.round(u*CONFIG.metersPerUnit/CONFIG.walkMetersPerMinute));
+const speedFor=()=>travelMode==='vehicle'?(CONFIG.vehicleMetersPerMinute||200):CONFIG.walkMetersPerMinute;
+const fmtMin=u=>Math.max(1,Math.round(u*CONFIG.metersPerUnit/speedFor()));
+const modeWord=()=>travelMode==='vehicle'?'by car/bike':'walk';
 
 function computeRoutes(){
   routes=null;
@@ -824,7 +847,10 @@ function computeRoutes(){
   }
   routes={A,B};
   activeRoute='A';
-  drawRoutes();renderRouteCard();fitToActive();window.__sync3D&&window.__sync3D(true);
+  // Route is only DRAWN once the guest presses Start; before that we just
+  // show the summary (distance/time) so they can pick a travel mode.
+  if(journeyOn){drawRoutes();renderRouteCard();fitToActive();window.__sync3D&&window.__sync3D(true);}
+  else renderSetupCard();
 }
 function drawRoutes(){
   routeG.innerHTML='';
@@ -835,8 +861,8 @@ function drawRoutes(){
     const d=toPath(r.geom);
     if(which===activeRoute){
       el('path',{d,fill:'none',stroke:'#141F18','stroke-width':9,'stroke-linecap':'round','stroke-linejoin':'round',opacity:.75},routeG);
-      el('path',{d,fill:'none',stroke:'#FFF3DC','stroke-width':5.6,'stroke-linecap':'round','stroke-linejoin':'round',opacity:.9},routeG);
-      el('path',{id:'routeMain',d,fill:'none',stroke:'var(--marigold)','stroke-width':4,'stroke-linecap':'round','stroke-linejoin':'round','stroke-dasharray':'13 13'},routeG);
+      el('path',{d,fill:'none',stroke:'#FFFFFF','stroke-width':5.6,'stroke-linecap':'round','stroke-linejoin':'round',opacity:.9},routeG);
+      el('path',{id:'routeMain',d,fill:'none',stroke:'var(--route)','stroke-width':4,'stroke-linecap':'round','stroke-linejoin':'round','stroke-dasharray':'13 13'},routeG);
     }else{
       el('path',{d,fill:'none',stroke:'#12211A',
         'stroke-width':6.4,'stroke-linecap':'round','stroke-linejoin':'round',opacity:.55},routeG);
@@ -854,12 +880,12 @@ function fitToActive(){
 }
 function renderRouteCard(){
   const card=$('routeCard'), pills=$('routePills');
-  if(!routes){card.classList.remove('show');return;}
+  if(!routes){card.classList.remove('show','setup','live');return;}
   const dp=POIS.find(p=>p.id===destId);
-  card.classList.add('show');
+  card.classList.add('show','live');card.classList.remove('setup');
   const act=routes[activeRoute];
   $('rName').textContent=dp.name;
-  $('rMeta').textContent=`${fmtM(act.trueLen)} m · ~${fmtMin(act.trueLen)} min walk`;
+  $('rMeta').textContent=`${fmtM(act.trueLen)} m · ~${fmtMin(act.trueLen)} min ${modeWord()}`;
   if(routes.B){
     pills.classList.add('show');
     $('pillAm').textContent=`${fmtM(routes.A.trueLen)} m · ~${fmtMin(routes.A.trueLen)} min · shortest`;
@@ -867,10 +893,12 @@ function renderRouteCard(){
     $('pillA').classList.toggle('on',activeRoute==='A');
     $('pillB').classList.toggle('on',activeRoute==='B');
   }else pills.classList.remove('show');
-  /* steps */
+  /* steps — each li carries data-cum (distance-from-start, in map units) so
+     updateStepsProgress() can mark it passed once the guest's live position
+     has traveled that far along this route */
   const ol=$('steps');ol.innerHTML='';
   const li0=document.createElement('li');
-  li0.textContent=`Start · ${origin.label}`;ol.appendChild(li0);
+  li0.textContent=`Start · ${origin.label}`;li0.dataset.cum='0';ol.appendChild(li0);
   let cum=0,last=origin.label;
   for(let i=1;i<act.nodes.length;i++){
     const prevN=act.nodes[i-1],n=act.nodes[i];
@@ -880,23 +908,90 @@ function renderRouteCard(){
     const dup=n2=>dp.name.includes(n2)||n2.includes(dp.name)||origin.label.includes(n2)||n2.includes(origin.label);
     if(nm&&nm!==last&&!dup(nm)&&i<act.nodes.length-1){
       const li=document.createElement('li');
-      li.textContent=`Walk past ${nm}`;
+      li.textContent=`${travelMode==='vehicle'?'Go past':'Walk past'} ${nm}`;
+      li.dataset.cum=String(cum);
       const m=document.createElement('span');m.className='m';m.textContent=`${fmtM(cum)} m`;
       li.appendChild(m);ol.appendChild(li);last=nm;
     }
   }
   const liE=document.createElement('li');
-  liE.textContent=`Arrive at ${dp.name}`;
+  liE.textContent=`Arrive at ${dp.name}`;liE.dataset.cum=String(act.trueLen);
   const mE=document.createElement('span');mE.className='m';mE.textContent=`${fmtM(act.trueLen)} m`;
   liE.appendChild(mE);ol.appendChild(liE);
+  updateStepsProgress();
 }
-$('pillA').onclick=()=>{if(routes){activeRoute='A';drawRoutes();renderRouteCard();fitToActive();window.__sync3D&&window.__sync3D(true);}};
-$('pillB').onclick=()=>{if(routes&&routes.B){activeRoute='B';drawRoutes();renderRouteCard();fitToActive();window.__sync3D&&window.__sync3D(true);}};
-$('clearBtn').onclick=()=>{
-  routes=null;destId=null;destSelect.reset('Choose a destination…');
-  routeG.innerHTML='';destRing.setAttribute('visibility','hidden');
-  $('routeCard').classList.remove('show');window.__sync3D&&window.__sync3D(false);
+/* ═══════════ LIVE PROGRESS: which steps has the guest already passed? ═══════════
+   The route is FROZEN once Start is pressed (we don't re-run pathfinding on every
+   GPS tick — see setOriginPoi/setOriginPoint below). Instead we project the
+   guest's live position onto that frozen route's geometry to find how far along
+   it they are, then mark every step up to that point as passed. journeyMaxCum
+   only ever increases, so ordinary GPS jitter can't make a passed step flicker
+   back to "upcoming". */
+let journeyMaxCum=0;
+function updateStepsProgress(){
+  if(!journeyOn||!routes||!origin)return;
+  const act=routes[activeRoute];if(!act)return;
+  const pos=origin.raw||origin.pt;
+  let bestD=Infinity,bestCum=0,cum=0;
+  for(let i=1;i<act.geom.length;i++){
+    const a=act.geom[i-1],b=act.geom[i];
+    const segLen=dist(a,b);
+    let t=0;
+    if(segLen>1e-6){
+      t=((pos[0]-a[0])*(b[0]-a[0])+(pos[1]-a[1])*(b[1]-a[1]))/(segLen*segLen);
+      t=Math.max(0,Math.min(1,t));
+    }
+    const proj=[a[0]+t*(b[0]-a[0]),a[1]+t*(b[1]-a[1])];
+    const d=dist(pos,proj);
+    if(d<bestD){bestD=d;bestCum=cum+t*segLen;}
+    cum+=segLen;
+  }
+  journeyMaxCum=Math.max(journeyMaxCum,bestCum);
+  const items=document.querySelectorAll('#steps li');
+  items.forEach((li,i)=>{
+    const c=parseFloat(li.dataset.cum||'0');
+    // Every waypoint needs to be WALKED PAST (strictly beyond it) to turn green —
+    // this is what keeps the very first ("Start") dot red at the moment Start is
+    // pressed. The final "Arrive at..." step is the one exception: reaching it is
+    // enough (>=), so it doesn't need to be overshot to register as complete.
+    const passed=(i===items.length-1)?journeyMaxCum>=c-1:journeyMaxCum>c+1;
+    li.classList.toggle('passed',passed);
+  });
+}
+/* setup card: destination chosen but journey not started yet */
+function renderSetupCard(){
+  const card=$('routeCard');
+  const dp=POIS.find(p=>p.id===destId);
+  if(!dp){card.classList.remove('show','setup','live');return;}
+  card.classList.add('show','setup');card.classList.remove('live');
+  $('rName').textContent=dp.name;
+  if(routes){
+    const act=routes[activeRoute];
+    $('rMeta').textContent=`${fmtM(act.trueLen)} m · ~${fmtMin(act.trueLen)} min ${modeWord()}`;
+    $('startBtn').disabled=false;
+  }else{
+    $('rMeta').textContent='Set where you are (step 1) to see distance & time';
+    $('startBtn').disabled=true;
+  }
+}
+$('pillA').onclick=()=>{if(routes){activeRoute='A';journeyMaxCum=0;drawRoutes();renderRouteCard();fitToActive();window.__sync3D&&window.__sync3D(true);}};
+$('pillB').onclick=()=>{if(routes&&routes.B){activeRoute='B';journeyMaxCum=0;drawRoutes();renderRouteCard();fitToActive();window.__sync3D&&window.__sync3D(true);}};
+$('startBtn').onclick=()=>{
+  if(!routes)return;
+  journeyOn=true;journeyMaxCum=0;
+  drawRoutes();renderRouteCard();fitToActive();window.__sync3D&&window.__sync3D(true);
 };
+$('exitBtn').onclick=()=>{
+  journeyOn=false;journeyMaxCum=0;routes=null;destId=null;destSelect.reset('Choose a destination…');
+  routeG.innerHTML='';destPin.setAttribute('visibility','hidden');
+  $('routeCard').classList.remove('show','setup','live');window.__sync3D&&window.__sync3D(false);
+};
+document.querySelectorAll('#travelModes button').forEach(b=>b.onclick=()=>{
+  travelMode=b.dataset.tmode;
+  document.querySelectorAll('#travelModes button').forEach(x=>x.classList.toggle('on',x===b));
+  if(journeyOn)renderRouteCard();
+  else if(destId)renderSetupCard();
+});
 
 /* ═══════════ ORIGIN + DESTINATION ═══════════ */
 function showMe(pt){meG.setAttribute('visibility','visible');meG.setAttribute('transform',`translate(${pt[0]} ${pt[1]})`);window.__sync3D&&window.__sync3D(false);}
@@ -907,28 +1002,43 @@ function setLocLine(label){
 function setOriginPoi(id){
   const p=POIS.find(q=>q.id===id);if(!p)return;
   origin={gnode:gnodeOf(p),pt:poiPt(p),label:p.name,snap:null};
+  meAcc.setAttribute('r',0);
   if(originSelect.value!==id)originSelect.setValue(id);
-  showMe(origin.pt);setLocLine(p.name);computeRoutes();
+  showMe(origin.pt);setLocLine(p.name);
+  if(journeyOn)updateStepsProgress();else computeRoutes();
 }
 function nearestPoiName(pt){
   let best=null,bd=1e9;
   for(const p of POIS){const d=dist(pt,poiPt(p));if(d<bd){bd=d;best=p;}}
   return bd<60?`Near ${best.name}`:'Tapped point';
 }
-function setOriginPoint(pt,labelPrefix){
+function setOriginPoint(pt,labelPrefix,acc){
   const snap=snapToRoad(pt);
-  const label=labelPrefix==='Live GPS'?'Live GPS position':nearestPoiName(pt);
-  origin={gnode:null,pt:snap.pt,label,snap};
-  showMe(snap.pt);setLocLine(label);computeRoutes();
+  const isGps=labelPrefix==='Live GPS';
+  const label=isGps?(acc?`Live GPS · ±${Math.round(acc)} m`:'Live GPS position'):nearestPoiName(pt);
+  // Routing starts from the nearest path (snap), but the dot is shown at the
+  // TRUE position — so standing beside a building shows you beside it, not
+  // teleported onto the nearest walkway.
+  origin={gnode:null,pt:snap.pt,raw:pt,label,snap};
+  meAcc.setAttribute('r',isGps&&acc?Math.min(60,acc/(CONFIG.metersPerUnit||1)):0);
+  showMe(pt);setLocLine(label);
+  // Once a journey is live, the route stays fixed — we only track progress
+  // along it (see updateStepsProgress). Re-running pathfinding on every GPS
+  // tick would regenerate a brand-new step list each time and make "passed"
+  // state meaningless.
+  if(journeyOn)updateStepsProgress();else computeRoutes();
 }
 function setDest(id){
   destId=id||null;
-  if(!destId){destRing.setAttribute('visibility','hidden');routes=null;routeG.innerHTML='';$('routeCard').classList.remove('show');window.__sync3D&&window.__sync3D(false);return;}
+  journeyOn=false;routeG.innerHTML='';
+  $('routeCard').classList.remove('live','setup');
+  if(!destId){destPin.setAttribute('visibility','hidden');routes=null;$('routeCard').classList.remove('show');window.__sync3D&&window.__sync3D(false);return;}
   const p=POIS.find(q=>q.id===destId);
-  destRing.setAttribute('cx',p.x);destRing.setAttribute('cy',p.y);
-  destRing.setAttribute('visibility','visible');window.__sync3D&&window.__sync3D(false);
-  if(!origin){toast('Now set where you are — pick a landmark, tap the map, or use GPS.');
-    let x0=Math.min(p.x, p.x)-40,y0=p.y-40;fitBox(p.x-60,p.y-60,p.x+60,p.y+60,40);return;}
+  destPin.setAttribute('transform',`translate(${p.x} ${p.y})`);
+  destPin.setAttribute('visibility','visible');window.__sync3D&&window.__sync3D(false);
+  if(!origin){routes=null;renderSetupCard();
+    toast('Now set where you are — pick a landmark, tap the map, or use GPS.');
+    fitBox(p.x-60,p.y-60,p.x+60,p.y+60,40);return;}
   computeRoutes();
 }
 
@@ -1075,23 +1185,59 @@ const destSelect=makeCustomSelect({
 });
 
 /* ═══════════ GPS (optional, needs CONFIG setup) ═══════════ */
-let gpsWatch=null, gpsFit=null;
+let gpsWatch=null, gpsFit=null, gpsApproxNoted=false;
 function buildGpsFit(){
-  const [r1,r2]=CONFIG.gps.refs;
-  const p1=POIS.find(p=>p.id===r1.id),p2=POIS.find(p=>p.id===r2.id);
-  if(!p1||!p2||!r1.lat||!r2.lat)return null;
-  const lat0=(r1.lat+r2.lat)/2;
-  const M=111320, mx=Math.cos(lat0*Math.PI/180)*M;
-  const g1=[r1.lng*mx,-r1.lat*M], g2=[r2.lng*mx,-r2.lat*M];
-  const u1=poiPt(p1),u2=poiPt(p2);
-  const dg=[g2[0]-g1[0],g2[1]-g1[1]], du=[u2[0]-u1[0],u2[1]-u1[1]];
-  const d2=dg[0]*dg[0]+dg[1]*dg[1]; if(d2<1)return null;
-  const a=(du[0]*dg[0]+du[1]*dg[1])/d2, b=(du[1]*dg[0]-du[0]*dg[1])/d2;
-  return {lat0,M,mx,a,b,g1,u1};
+  // keep only references that have real coordinates AND a matching POI on this map
+  const refs=(CONFIG.gps.refs||[]).filter(r=>r&&r.lat&&r.lng&&POIS.find(p=>p.id===r.id));
+  if(!refs.length)return null;
+  const M=111320;
+  const lat0=refs.reduce((s,r)=>s+r.lat,0)/refs.length;
+  const mx=Math.cos(lat0*Math.PI/180)*M;
+  const G=refs.map(r=>[r.lng*mx,-r.lat*M]);
+  const U=refs.map(r=>poiPt(POIS.find(p=>p.id===r.id)));
+  const fit={mx,M,approx:refs.length===1};
+  if(refs.length>=3){
+    // THREE+ points → least-squares affine: also absorbs distortion between the
+    // illustrated map and reality, so accuracy improves everywhere, not just at the refs
+    const A=lsqAffine(G,U);
+    if(A){Object.assign(fit,A);return fit;}
+  }
+  if(refs.length>=2){
+    // TWO points → similarity fit: derives rotation AND scale from the data
+    const dg=[G[1][0]-G[0][0],G[1][1]-G[0][1]], du=[U[1][0]-U[0][0],U[1][1]-U[0][1]];
+    const d2=dg[0]*dg[0]+dg[1]*dg[1]; if(d2<1)return null;
+    const a=(du[0]*dg[0]+du[1]*dg[1])/d2, b=(du[1]*dg[0]-du[0]*dg[1])/d2;
+    Object.assign(fit,{m11:a,m12:-b,m21:b,m22:a,
+      tx:U[0][0]-(a*G[0][0]-b*G[0][1]),ty:U[0][1]-(b*G[0][0]+a*G[0][1])});
+    return fit;
+  }
+  // ONE point → approximate: anchor here, assume north-up + the map's known scale
+  if(!CONFIG.metersPerUnit)return null;
+  const s=1/CONFIG.metersPerUnit;
+  Object.assign(fit,{m11:s,m12:0,m21:0,m22:s,tx:U[0][0]-s*G[0][0],ty:U[0][1]-s*G[0][1]});
+  return fit;
+}
+function lsqAffine(G,U){
+  // least-squares u = m·g + t over all reference points (centered for stability)
+  const n=G.length;
+  let gmx=0,gmy=0,umx=0,umy=0;
+  for(let i=0;i<n;i++){gmx+=G[i][0];gmy+=G[i][1];umx+=U[i][0];umy+=U[i][1];}
+  gmx/=n;gmy/=n;umx/=n;umy/=n;
+  let Sxx=0,Sxy=0,Syy=0,Bxx=0,Bxy=0,Byx=0,Byy=0;
+  for(let i=0;i<n;i++){
+    const gx=G[i][0]-gmx,gy=G[i][1]-gmy,ux=U[i][0]-umx,uy=U[i][1]-umy;
+    Sxx+=gx*gx;Sxy+=gx*gy;Syy+=gy*gy;
+    Bxx+=gx*ux;Bxy+=gy*ux;Byx+=gx*uy;Byy+=gy*uy;
+  }
+  const det=Sxx*Syy-Sxy*Sxy;
+  if(det<1e-6*(Sxx+Syy)*(Sxx+Syy)+1e-9)return null; // collinear refs → fall back
+  const m11=(Bxx*Syy-Bxy*Sxy)/det, m12=(Bxy*Sxx-Bxx*Sxy)/det;
+  const m21=(Byx*Syy-Byy*Sxy)/det, m22=(Byy*Sxx-Byx*Sxy)/det;
+  return {m11,m12,m21,m22,tx:umx-m11*gmx-m12*gmy,ty:umy-m21*gmx-m22*gmy};
 }
 function gpsToUnits(lat,lng,f){
-  const g=[lng*f.mx-f.g1[0], -lat*f.M-f.g1[1]];
-  return [f.u1[0]+f.a*g[0]-f.b*g[1], f.u1[1]+f.b*g[0]+f.a*g[1]];
+  const gx=lng*f.mx, gy=-lat*f.M;
+  return [f.m11*gx+f.m12*gy+f.tx, f.m21*gx+f.m22*gy+f.ty];
 }
 function insideBoundary(pt){
   let c=false;const poly=boundaryPts;
@@ -1108,22 +1254,32 @@ function startGPS(){
   if(gpsWatch!==null)navigator.geolocation.clearWatch(gpsWatch);
   toast('Getting your GPS position…',2500);
   gpsWatch=navigator.geolocation.watchPosition(pos=>{
-    const {latitude:lat,longitude:lng}=pos.coords;
+    const {latitude:lat,longitude:lng,accuracy}=pos.coords;
     if(!gpsFit){
       toast(`GPS is reading ${lat.toFixed(6)}, ${lng.toFixed(6)} — paste the two reference coordinates in CONFIG (top of the file) and set enabled:true to place this on the map.`,7000);
       return;
     }
     const pt=gpsToUnits(lat,lng,gpsFit);
     if(!insideBoundary(pt)){
-      toast('Your GPS shows you outside the resort map. If you are inside the resort, re-check the two reference coordinates in CONFIG.');
-      return;
+      // How far outside the traced boundary are we (in metres)?
+      let bd=1e9; for(const bp of boundaryPts){const d=dist(pt,bp); if(d<bd)bd=d;}
+      const outM=bd*(CONFIG.metersPerUnit||1);
+      // An approximate (single-point) fit can read slightly outside at edges like the
+      // main gate — tolerate that; only reject when clearly well outside the resort.
+      const tol=gpsFit.approx?45:6;
+      if(outM>tol){
+        toast('Your GPS shows you outside the resort map. If you are inside the resort, the map may just need its GPS reference points set.');
+        return;
+      }
     }
-    if(origin&&origin.snap&&dist(origin.pt,pt)<8)return; // ignore jitter
-    setOriginPoint(pt,'Live GPS');
+    if(gpsFit.approx&&!gpsApproxNoted){gpsApproxNoted=true;
+      toast('Showing your approximate position. Accuracy improves once this resort has two GPS reference points.',5000);}
+    if(origin&&origin.snap&&origin.raw&&dist(origin.raw,pt)<3)return; // ignore tiny jitter (~2 m)
+    setOriginPoint(pt,'Live GPS',accuracy);
   },err=>{
     toast(err.code===1?'Location permission was denied — allow it in the browser, or use "Tap the map".'
                      :'Could not get a GPS fix — use "Tap the map" instead.');
-  },{enableHighAccuracy:true,maximumAge:3000,timeout:15000});
+  },{enableHighAccuracy:true,maximumAge:0,timeout:15000});
 }
 
 /* ═══════════ CLOCK ═══════════ */
@@ -1445,21 +1601,21 @@ function buildDyn(){
   if(!inited)return;
   while(dynGrp.children.length)dynGrp.remove(dynGrp.children[0]);
   flow=null;meMesh=null;meRing=null;destTor=null;
-  if(routes){
+  if(routes&&journeyOn){
     const inactive=activeRoute==='A'?routes.B:routes.A;
     if(inactive){
-      const g=new THREE.Mesh(ribbon(inactive.geom,3.2,0.85),lam(0x7FB3D5,{transparent:true,opacity:0.92}));
+      const g=new THREE.Mesh(ribbon(inactive.geom,3.2,0.85),lam(0x9AA7B4,{transparent:true,opacity:0.92}));
       dynGrp.add(g);
     }
     const act=routes[activeRoute];
     if(act){
-      dynGrp.add(new THREE.Mesh(ribbon(act.geom,5.6,0.95),lam(0xFFF3DC)));
-      dynGrp.add(new THREE.Mesh(ribbon(act.geom,3.6,1.08),lam(0xF2A93B,{emissive:0x6b420c})));
+      dynGrp.add(new THREE.Mesh(ribbon(act.geom,5.6,0.95),lam(0xFFFFFF)));
+      dynGrp.add(new THREE.Mesh(ribbon(act.geom,3.6,1.08),lam(0x4285F4,{emissive:0x0d2c63})));
       /* flowing dots */
       const cum=[0];
       for(let i=1;i<act.geom.length;i++)cum.push(cum[i-1]+dist(act.geom[i-1],act.geom[i]));
       const L=cum[cum.length-1],nD=Math.max(3,Math.floor(L/24));
-      const dots=new THREE.InstancedMesh(new THREE.SphereGeometry(1.5,8,7),lam(0xFFFBEF,{emissive:0x8a6a2a}),nD);
+      const dots=new THREE.InstancedMesh(new THREE.SphereGeometry(1.5,8,7),lam(0xEAF2FF,{emissive:0x33549a}),nD);
       dots.userData={cum,geom:act.geom,L,nD,off:0};
       dynGrp.add(dots);flow=dots;
     }
@@ -1473,10 +1629,16 @@ function buildDyn(){
     dynGrp.add(meMesh,meRing);
   }
   if(destId){
+    /* red map-pin (cone + sphere head), like the 2D pin */
     const p=POIS.find(q=>q.id===destId);
-    destTor=new THREE.Mesh(new THREE.TorusGeometry(7.5,0.8,8,30),lam(0xF2A93B,{emissive:0x7a4d10}));
-    destTor.rotation.x=Math.PI/2;
-    destTor.position.set(p.x-CX,H(p.x,p.y)+2.2,p.y-CY);
+    destTor=new THREE.Group();
+    const pinMat={emissive:0x611511};
+    const cone=new THREE.Mesh(new THREE.ConeGeometry(3.4,10,14),lam(0xEA4335,pinMat));
+    cone.rotation.x=Math.PI;cone.position.y=5;
+    const head=new THREE.Mesh(new THREE.SphereGeometry(4.6,16,13),lam(0xEA4335,pinMat));
+    head.position.y=11.5;
+    destTor.add(cone,head);
+    destTor.position.set(p.x-CX,H(p.x,p.y)+1.2,p.y-CY);
     dynGrp.add(destTor);
   }
 }
@@ -1569,7 +1731,7 @@ function loop(){
     flow.instanceMatrix.needsUpdate=true;
   }
   if(meRing){const s=1+0.28*Math.sin(t3*3.4);meRing.scale.set(s,s,1);}
-  if(destTor)destTor.rotation.z+=0.035;
+  if(destTor)destTor.rotation.y+=0.02;
   renderer.render(scene,camera);
 }
 function resize(){
