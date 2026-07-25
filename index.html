@@ -188,8 +188,8 @@ h1{font-family:'Bricolage Grotesque',serif;font-weight:700;font-size:clamp(34px,
 </section>
 
 <div class="voiceRow" id="voiceToggleHost"></div>
-<p class="voiceNote">Directions are spoken on their own while you walk. Switch this on if you also want
-to ask Siri questions out loud.</p>
+<p class="voiceNote">Directions are spoken on their own while you walk. Switch this on to ask Siri
+questions out loud — she then stays on inside every resort map you open.</p>
 
 <script src="resorts-data.js"></script>
 <script src="assistant.js"></script>
@@ -368,7 +368,8 @@ const HOME_QA=[
  {re:/\b(bye|goodbye|see you)\b/, a:()=>'Goodbye, and enjoy your holiday.'},
  {re:/\bwhat.*\btime\b|\btime (is it|now)\b/,
   a:()=>'It is '+new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})+'.'},
- {re:/\b(what|which)\b.*\b(day|date)\b|\btoday\b/,
+ /* a bare "today" turns up in ordinary chatter, so it must not answer on its own */
+ {re:/\b(what|which)\b.*\b(day|date)\b|\b(day|date) today\b|\btodays date\b/,
   a:()=>'Today is '+new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'})+'.'},
  {re:/\bhow many\b.*\bresort/, a:()=>`There are ${RESORTS.length} resorts across ${states.length} states.`},
  {re:/\bhow many\b.*\bstate/, a:()=>`We cover ${states.length} states across India.`},
@@ -387,17 +388,18 @@ const HOME_QA=[
   a:()=>'I do not have live weather information here.'},
 ];
 /* A bare greeting wakes her up; a longer phrase just loses the wake word. */
-const WAKE=/^(h+i+|h+e+y+|h+e+l+o+|h+e+l+l+o+|hmm+|hm+|mm+|yo|siri|hi siri|hey siri|hello siri|ok siri|okay siri|excuse me|are you there|you there|listen)[\s!.?,]*$/;
-const WAKE_PREFIX=/^\s*(ok(ay)?\s+|hey\s+|hi\s+|hello\s+)?siri[\s,.!]*/i;
+/* Wake-word matching lives in assistant.js so both pages agree on what counts
+   as "hi siri" — including stretched spellings like "hii siri". */
 const WAKE_REPLIES=['Hi! How can I help you?','Hello! How can I help you?','Yes? How can I help you?'];
 
 function siriHome(said,alts){
   let all=(alts&&alts.length?alts:[said]);
-  all=all.map(a=>String(a).replace(WAKE_PREFIX,'').trim()||String(a));
+  const wake=all.some(a=>Siri.isWake(a));
+  all=all.map(a=>Siri.stripWake(a)||String(a));
   said=all[0];
   const any=re=>all.some(a=>re.test(vnorm(a)));
 
-  if(all.some(a=>WAKE.test(vnorm(a)))){
+  if(wake){
     Siri.speak(WAKE_REPLIES[Math.floor(Math.random()*WAKE_REPLIES.length)]);
     return true;
   }
@@ -438,7 +440,7 @@ if(window.Siri){
   // switches her on having somehow missed it.
   Siri.configure({
     welcome:'Welcome to Club Mahindra Resorts. My name is Siri. How can I help you?',
-    hint:'Sorry, I did not catch that. Say the name of a resort, or say help.',
+    hint:'Sorry.',                        // asked something she cannot answer — nothing more
     onCommand:siriHome
   });
   Siri.mountToggle('voiceToggleHost','Ask Siri');

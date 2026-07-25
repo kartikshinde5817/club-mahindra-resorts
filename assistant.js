@@ -58,12 +58,17 @@ const Siri = {
     this._buildUI();
     if(synth) synth.onvoiceschanged = ()=>this._pickVoice();
     if(this.enabled){
+      // She was switched on before this page loaded — the guest did it on the
+      // main page. Microphone permission is already granted for this origin, so
+      // open the ear straight away rather than waiting for a tap: otherwise she
+      // looks "on" while hearing nothing, and the guest switches her on again.
+      this._startRecog();
       this._tryGreet();
       // Some browsers ignore speak() issued while the page is still parsing,
       // so try again at the points where the engine is reliably awake.
       if(document.readyState!=='complete')
         window.addEventListener('load',()=>{ if(!this.greeted) this._tryGreet(true); },{once:true});
-      setTimeout(()=>{ if(!this.greeted) this._tryGreet(true); },900);
+      setTimeout(()=>{ if(!this.greeted) this._tryGreet(true); this._startRecog(); },900);
     }
     // Audio and the microphone both need a real user gesture in most browsers,
     // so ANY first interaction re-attempts the greeting and opens the mic.
@@ -344,12 +349,53 @@ const Siri = {
   _resumeRecog(){ this._recogPaused=false; if(this.enabled) setTimeout(()=>this._startRecog(),220); },
   _stopRecog(){ this._recogPaused=true; try{ this.recog&&this.recog.abort(); }catch(e){} this.listening=false; },
 
+  /* ── is this actually being said TO her? ─────────────────────────
+     The microphone hears the whole lobby, not just the guest holding the
+     phone. Answering a sentence that merely happened to contain "today" or
+     "food" is worse than staying quiet, so anything that does not look like
+     it was aimed at Siri is ignored completely — no answer, not even an
+     apology. Something counts as aimed at her when it names her, is a
+     greeting, opens like a question or an instruction, is short the way
+     people speak to a phone, or lands while she is mid-conversation. */
+  _norm(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim(); },
+  /* speech-to-text stretches greetings out — "hii", "heyyy", "helloo", "hmmm" */
+  _GREET:/^(h+i+|h+e+y+|h+e+l+l*o+|h+m+|m+h*m+|yo|namaste|hola|excuse me|are you there|you there|listen|good (morning|afternoon|evening|night))$/,
+  _OPENER:/^(what|where|when|which|who|whose|why|how|is|are|was|were|do|does|did|can|could|will|would|should|shall|tell|show|take|give|find|guide|navigate|open|start|stop|exit|cancel|clear|repeat|help|please|lets|let|route|distance|near|walk|drive|go)\b|^i (want|need|am|m|would|d like)\b/,
+
+  /* "siri", "hi siri", "hii siri", "hello", "hmm" — all mean "wake up" */
+  isWake(text){
+    let t=this._norm(text);
+    if(!t) return false;
+    t=t.replace(/^siri\b\s*/,'').replace(/\s*\bsiri$/,'').trim();
+    if(!t) return true;
+    return this._GREET.test(t);
+  },
+  /* drop a leading "siri" / "hey siri" so "siri take me to the pool" still works */
+  stripWake(text){
+    return String(text||'').replace(/^\s*((o+k+a*y*|h+e+y+|h+i+|h+e+l+l*o+)\s+)?siri\b[\s,.!?]*/i,'').trim();
+  },
+  addressed(text,inConversation){
+    if(inConversation) return true;
+    let t=this._norm(text);
+    if(!t) return false;
+    if(/\bsiri\b/.test(t)) return true;
+    if(this.isWake(t)) return true;
+    t=t.replace(/^(h+i+|h+e+y+|h+e+l+l*o+|namaste|ok|okay|please)\s+/,'');   // "hello take me to…"
+    if(this._OPENER.test(t)) return true;
+    return t.split(' ').length<=4;      // people speak to a phone in short phrases
+  },
+
   _handle(said, alts){
     const fn = this.cfg.onCommand;
     if(!fn){ return; }
+    const list = alts&&alts.length ? alts : [said];
+    let talking=false;
+    try{ talking = !!(this.cfg.inConversation && this.cfg.inConversation()); }catch(e){}
+    if(!list.some(a=>this.addressed(a,talking))) return;   // overheard, not asked
     let handled=false;
-    try{ handled = fn(said, alts||[said]); }catch(e){ handled=false; }
-    if(!handled) this.speak(this.cfg.hint || "Sorry, I did not catch that.");
+    try{ handled = fn(said, list); }catch(e){ handled=false; }
+    // She was asked something and has no answer — say only that.
+    if(!handled) this.speak(this.cfg.hint || 'Sorry.');
   },
 
   /* Ask by typing — identical handling to speech, so every command and
@@ -471,6 +517,12 @@ const Siri = {
         this._showUnlock(false);
         this._tryGreet();          // capture-phase listener may already have started one
         this._startRecog();
+        return;
+      }
+      // Switched on but not listening yet — some browsers hold the microphone
+      // back until the page is tapped. A tap here means "start hearing me".
+      if(this.enabled && !this.listening && !this.micDenied){
+        this._startRecog(); this._paint();
         return;
       }
       this.toggle();

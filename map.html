@@ -1522,7 +1522,9 @@ const QA=[
  {re:/\b(bye|goodbye|see you|good night)\b/, a:()=>'Goodbye, and enjoy your stay at the resort.'},
  {re:/\bwhat.*\btime\b|\btime (is it|now)\b/,
   a:()=>'It is '+new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})+'.'},
- {re:/\b(what|which)\b.*\b(day|date)\b|\btoday\b/,
+ /* a bare "today" is not a question — it turns up in ordinary chatter like
+    "who won the match today", which she must not answer */
+ {re:/\b(what|which)\b.*\b(day|date)\b|\b(day|date) today\b|\btodays date\b/,
   a:()=>'Today is '+new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'})+'.'},
  {re:/\b(eat|food|restaurant|dining|dine|breakfast|lunch|dinner|hungry|meal|cafe|coffee|snack)/,
   a:()=>{const n=catNames('dine');
@@ -1583,15 +1585,17 @@ function answerQA(text){
 /* A bare greeting is a wake-up, not a question: "hi", "hello", "hmm", "siri".
    Anything longer ("hello, take me to the pool") is treated as a real request,
    with the wake word simply stripped off the front. */
-const WAKE=/^(h+i+|h+e+y+|h+e+l+o+|h+e+l+l+o+|hmm+|hm+|mm+|yo|siri|hi siri|hey siri|hello siri|ok siri|okay siri|excuse me|are you there|you there|listen)[\s!.?,]*$/;
-const WAKE_PREFIX=/^\s*(ok(ay)?\s+|hey\s+|hi\s+|hello\s+)?siri[\s,.!]*/i;
+/* Wake-word matching lives in assistant.js so the map and the dashboard agree
+   on what counts as "hi siri" — including the stretched spellings speech-to-text
+   produces, like "hii siri" or "heyyy". */
 const WAKE_REPLIES=['Hi! How can I help you?','Hello! How can I help you?','Yes? How can I help you?'];
 function wakeReply(){ return WAKE_REPLIES[Math.floor(Math.random()*WAKE_REPLIES.length)]; }
 
 function siriCommand(said,alts){
   let all=(alts&&alts.length?alts:[said]);
+  const wake=all.some(a=>Siri.isWake(a));
   // strip a leading "siri"/"hey siri" so "siri take me to the pool" still works
-  all=all.map(a=>String(a).replace(WAKE_PREFIX,'').trim()||String(a));
+  all=all.map(a=>Siri.stripWake(a)||String(a));
   said=all[0];
   const t=norm(said);
   if(!t)return false;
@@ -1599,7 +1603,7 @@ function siriCommand(said,alts){
   const findPOI=()=>{ for(const a of all){ const p=matchPOI(a); if(p)return p; } return null; };
 
   /* ── 0. wake word / greeting ── */
-  if(all.some(a=>WAKE.test(norm(a)))){
+  if(wake){
     convo='idle';
     Siri.speak(wakeReply());
     return true;
@@ -1693,7 +1697,8 @@ if(window.Siri){
   // at sign-in; opening a resort must not repeat it. Switching her on here says
   // the short "Voice assistant is on" line instead.
   Siri.configure({
-    hint:'Sorry, I did not catch that. You can say, take me to the swimming pool, or say help.',
+    hint:'Sorry.',                       // asked something she cannot answer — nothing more
+    inConversation:()=>convo!=='idle'||voiceAwaitingFix,
     onCommand:siriCommand
   });
 }
