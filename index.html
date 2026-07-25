@@ -3,7 +3,24 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<script>if(localStorage.getItem('cmr_auth')!=='1'){location.replace('login.html?next='+encodeURIComponent(location.pathname+location.search));}</script>
+<script>
+/* Auth lives in sessionStorage, which is scoped to a single tab — so every new
+   tab (or window) has to sign in again. It also expires 1 hour after sign-in,
+   re-checked every minute so a long-idle tab is signed out too. */
+(function(){
+  var MAX=3600000;
+  function bounce(){
+    try{sessionStorage.removeItem('cmr_auth');sessionStorage.removeItem('cmr_auth_at');}catch(e){}
+    location.replace('login.html?next='+encodeURIComponent(location.pathname+location.search));
+  }
+  function ok(){
+    var a,t;try{a=sessionStorage.getItem('cmr_auth');t=+sessionStorage.getItem('cmr_auth_at')||0;}catch(e){return false;}
+    return a==='1'&&t>0&&(Date.now()-t)<MAX;
+  }
+  if(!ok())bounce();
+  else setInterval(function(){if(!ok())bounce();},60000);
+})();
+</script>
 <title>Club Mahindra Resorts</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -53,6 +70,7 @@ header{width:100%;max-width:860px;padding:38px 0 6px;text-align:center;position:
 h1{font-family:'Bricolage Grotesque',serif;font-weight:700;font-size:clamp(34px,6vw,52px);letter-spacing:-.015em;margin:8px 0 6px}
 .sub{color:var(--muted);font-size:15.5px}
 .stats{display:flex;gap:10px;justify-content:center;margin-top:16px;flex-wrap:wrap}
+.voiceRow{display:flex;justify-content:center;margin-top:26px;position:relative;z-index:1}
 .stat{background:#16241B;border:1px solid var(--line);border-radius:999px;padding:7px 15px;
   font:600 12px 'Spline Sans Mono',monospace;color:var(--muted)}
 .stat b{color:var(--marigold);font-weight:600}
@@ -167,7 +185,10 @@ h1{font-family:'Bricolage Grotesque',serif;font-weight:700;font-size:clamp(34px,
   <div class="mapnote" id="mapnote"></div>
 </section>
 
+<div class="voiceRow" id="voiceToggleHost"></div>
+
 <script src="resorts-data.js"></script>
+<script src="assistant.js"></script>
 <script>
 'use strict';
 const $=id=>document.getElementById(id);
@@ -308,6 +329,118 @@ function urlFor(id){
   return 'map.html?id='+encodeURIComponent(id);
 }
 btn.addEventListener('click',()=>{if(resortSelect.value)location.href=urlFor(resortSelect.value);});
+
+/* ═══════════ SARII — voice on the dashboard ═══════════
+   Here she only needs to open a resort; all the wayfinding talk lives on the map. */
+const vnorm=s=>String(s||'').toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
+function findResort(text){
+  const q=vnorm(text); if(q.length<3)return null;
+  let best=null,sc=0;
+  for(const r of RESORTS){
+    const n=vnorm(r.name);
+    const short=n.replace(/^club mahindra\s*/,'');
+    let s=0;
+    if(q.includes(short)&&short.length>3)s=80+short.length;
+    else{
+      const words=short.split(' ').filter(w=>w.length>3);
+      const hit=words.filter(w=>q.includes(w)).length;
+      if(hit)s=30+hit*15;
+    }
+    if(s>sc){sc=s;best=r;}
+  }
+  return sc>=45?best:null;
+}
+function statesOf(text){
+  const q=vnorm(text);
+  return states.filter(s=>q.includes(vnorm(s)));
+}
+/* what she can answer on the dashboard */
+const HOME_QA=[
+ {re:/\b(hello|hi|hey|namaste|good (morning|afternoon|evening|night))\b/,
+  a:()=>'Hello! Which resort would you like to see?'},
+ {re:/\b(your name|who are you|what are you|about you|who made you)\b/,
+  a:()=>'My name is Siri. I can help you find any Club Mahindra resort and show you its map.'},
+ {re:/\b(thank|thanks|shukriya)\b/, a:()=>'Happy to help.'},
+ {re:/\b(bye|goodbye|see you)\b/, a:()=>'Goodbye, and enjoy your holiday.'},
+ {re:/\bwhat.*\btime\b|\btime (is it|now)\b/,
+  a:()=>'It is '+new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})+'.'},
+ {re:/\b(what|which)\b.*\b(day|date)\b|\btoday\b/,
+  a:()=>'Today is '+new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'})+'.'},
+ {re:/\bhow many\b.*\bresort/, a:()=>`There are ${RESORTS.length} resorts across ${states.length} states.`},
+ {re:/\bhow many\b.*\bstate/, a:()=>`We cover ${states.length} states across India.`},
+ {re:/\b(which|what|list|name).*(state|place|location)s?\b/,
+  a:()=>'We have resorts in '+states.slice(0,8).join(', ')+', and more. Say a state name to hear its resorts.'},
+ {re:/\b(full map|interactive|detailed map|which resort.*map)\b/,
+  a:()=>{const m=RESORTS.filter(r=>r.page||r.mapped).map(r=>r.name.replace(/^Club Mahindra\s*/,''));
+    return m.length?'Full interactive maps are ready for '+m.join(', ')+'. More are being added.'
+                   :'Interactive maps are being prepared.';}},
+ {re:/\b(help|what can you do|what can i say|commands|options)\b/,
+  a:()=>'Say the name of a resort to open its map — for example, open Tungi. '
+       +'You can also ask which states we cover, or how many resorts there are.'},
+ {re:/\b(login|log ?out|sign ?out|password|account)\b/,
+  a:()=>'Your sign in lasts for one hour. After that the app will ask you to sign in again.'},
+ {re:/\b(weather|rain|temperature)\b/,
+  a:()=>'I do not have live weather information here.'},
+];
+/* A bare greeting wakes her up; a longer phrase just loses the wake word. */
+const WAKE=/^(h+i+|h+e+y+|h+e+l+o+|h+e+l+l+o+|hmm+|hm+|mm+|yo|siri|hi siri|hey siri|hello siri|ok siri|okay siri|excuse me|are you there|you there|listen)[\s!.?,]*$/;
+const WAKE_PREFIX=/^\s*(ok(ay)?\s+|hey\s+|hi\s+|hello\s+)?siri[\s,.!]*/i;
+const WAKE_REPLIES=['Hi! How can I help you?','Hello! How can I help you?','Yes? How can I help you?'];
+
+function siriHome(said,alts){
+  let all=(alts&&alts.length?alts:[said]);
+  all=all.map(a=>String(a).replace(WAKE_PREFIX,'').trim()||String(a));
+  said=all[0];
+  const any=re=>all.some(a=>re.test(vnorm(a)));
+
+  if(all.some(a=>WAKE.test(vnorm(a)))){
+    Siri.speak(WAKE_REPLIES[Math.floor(Math.random()*WAKE_REPLIES.length)]);
+    return true;
+  }
+
+  /* open a resort by name — the main job on this page */
+  let r=null;
+  for(const a of all){ r=findResort(a); if(r)break; }
+  if(r&&any(/\b(open|show|take me|go to|map|resort|visit|navigate)\b/)){
+    Siri.speak(`Opening ${r.name}.`);
+    setTimeout(()=>{location.href=urlFor(r.id);},1200);
+    return true;
+  }
+
+  /* "resorts in Goa" → read them out */
+  const st=statesOf(said);
+  if(st.length){
+    const list=RESORTS.filter(x=>x.state===st[0]).map(x=>x.name.replace(/^Club Mahindra\s*/,''));
+    Siri.speak(`In ${st[0]} we have ${list.length} resort${list.length===1?'':'s'}: `
+      +list.slice(0,6).join(', ')+'. Say a resort name to open its map.');
+    return true;
+  }
+
+  for(const item of HOME_QA){
+    if(item.re.test(vnorm(said))){ const ans=item.a(); if(ans){ Siri.speak(ans); return true; } }
+  }
+
+  if(r){    // a bare resort name still means "open it"
+    Siri.speak(`Opening ${r.name}.`);
+    setTimeout(()=>{location.href=urlFor(r.id);},1200);
+    return true;
+  }
+  return false;
+}
+if(window.Siri){
+  // The sign-in page already said the welcome out loud (inside the click
+  // gesture, where audio is reliably allowed) — don't say it a second time.
+  let justGreeted=false;
+  try{ justGreeted = sessionStorage.getItem('cmr_greeted')==='1';
+       if(justGreeted) sessionStorage.removeItem('cmr_greeted'); }catch(e){}
+  if(justGreeted) Siri.greeted=true;
+  Siri.configure({
+    welcome:'Welcome to Club Mahindra Resorts. My name is Siri. How can I help you?',
+    hint:'Sorry, I did not catch that. Say the name of a resort, or say help.',
+    onCommand:siriHome
+  });
+  Siri.mountToggle('voiceToggleHost','Voice assistant');
+}
 </script>
 </body>
 </html>

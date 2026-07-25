@@ -79,18 +79,31 @@ input:focus-visible{outline:2px solid var(--marigold);outline-offset:2px}
 
 <div class="note">This is a local, single-file dashboard — sign-in is a simple gate,<br>not a secure login system.</div>
 
+<script src="assistant.js"></script>
 <script>
 'use strict';
 const $=id=>document.getElementById(id);
 const params=new URLSearchParams(location.search);
 const next=params.get('next')||'index.html';
+/* Siri is loaded here only to speak the welcome on sign-in — no mic button or
+   greeting on this page, so we set her enabled flag without calling configure(). */
+if(window.Siri) Siri.enabled = localStorage.getItem('cmr_voice')!=='0';
 
 $('loginForm').addEventListener('submit',e=>{
   e.preventDefault();
   const u=$('user').value.trim(), p=$('pass').value;
   if(u==='admin'&&p==='admin123'){
-    localStorage.setItem('cmr_auth','1');
-    location.replace(next);
+    // sessionStorage is per-tab, so every new tab has to sign in again.
+    sessionStorage.setItem('cmr_auth','1');
+    sessionStorage.setItem('cmr_auth_at',String(Date.now()));  // also expires after 1 hour
+    const go=()=>location.replace(next);
+    // Speaking here is deliberate: this click is a real user gesture, the one
+    // moment browsers reliably allow audio. The dashboard then skips its own
+    // welcome so the guest does not hear it twice.
+    if(window.Siri&&Siri.enabled&&Siri.supported()){
+      sessionStorage.setItem('cmr_greeted','1');
+      Siri.speakThen('Welcome to Club Mahindra Resorts. My name is Siri. How can I help you?',go,4000);
+    }else go();
   }else{
     $('err').textContent='Incorrect username or password.';
     $('pass').value='';

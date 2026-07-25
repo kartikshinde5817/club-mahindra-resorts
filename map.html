@@ -3,7 +3,24 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<script>if(localStorage.getItem('cmr_auth')!=='1'){location.replace('login.html?next='+encodeURIComponent(location.pathname+location.search));}</script>
+<script>
+/* Auth lives in sessionStorage, which is scoped to a single tab — so every new
+   tab (or window) has to sign in again. It also expires 1 hour after sign-in,
+   re-checked every minute so a long-idle tab is signed out too. */
+(function(){
+  var MAX=3600000;
+  function bounce(){
+    try{sessionStorage.removeItem('cmr_auth');sessionStorage.removeItem('cmr_auth_at');}catch(e){}
+    location.replace('login.html?next='+encodeURIComponent(location.pathname+location.search));
+  }
+  function ok(){
+    var a,t;try{a=sessionStorage.getItem('cmr_auth');t=+sessionStorage.getItem('cmr_auth_at')||0;}catch(e){return false;}
+    return a==='1'&&t>0&&(Date.now()-t)<MAX;
+  }
+  if(!ok())bounce();
+  else setInterval(function(){if(!ok())bounce();},60000);
+})();
+</script>
 <title>Club Mahindra Resorts · Tungi, Lonavala</title>
 <!--
   ══════════════════════════════════════════════════════════════════
@@ -206,6 +223,18 @@ main{flex:1;position:relative;overflow:hidden;background:radial-gradient(1200px 
   font:500 12.5px 'Instrument Sans',sans-serif;transition:.15s}
 .nearmore a:hover{border-color:var(--marigold);color:var(--marigold)}
 @media (prefers-reduced-motion: reduce){.pulse,#routeMain{animation:none}}
+/* Voice button sits under the zoom bar so it clears the scale bar.
+   assistant.js injects its stylesheet after this one, so these need the extra
+   `body` specificity to win — otherwise the bubble gets both top and bottom
+   and stretches down the page. */
+/* On desktop the dock hangs under the zoom bar (buttons first, then the
+   bubble/typing box beneath). On phones it returns to the bottom-right. */
+body .siri-dock{top:170px;right:14px;bottom:auto}
+body .siri-dock .siri-row{order:-1}
+@media (max-width:880px){
+  body .siri-dock{top:auto;bottom:16px;right:14px}
+  body .siri-dock .siri-row{order:0}
+}
 @media (max-width:880px){
   body{flex-direction:column;overflow:auto}
   main{height:56vh;flex:none;order:0}
@@ -323,6 +352,7 @@ main{flex:1;position:relative;overflow:hidden;background:radial-gradient(1200px 
   </div>
 </main>
 <script src="three.min.js"></script>
+<script src="assistant.js"></script>
 <script>
 'use strict';
 /* ═══════════ NEARBY PLACES → GOOGLE MAPS ROUTES (shared helpers) ═══════════ */
@@ -955,8 +985,73 @@ function updateStepsProgress(){
     // pressed. The final "Arrive at..." step is the one exception: reaching it is
     // enough (>=), so it doesn't need to be overshot to register as complete.
     const passed=(i===items.length-1)?journeyMaxCum>=c-1:journeyMaxCum>c+1;
+    const was=li.classList.contains('passed');
     li.classList.toggle('passed',passed);
+    if(passed&&!was)navAnnounceStep(li,i,items.length);
   });
+  navAnnounceTurn();
+}
+
+/* ═══════════ TURN-BY-TURN VOICE CUES ═══════════
+   The drawn route is a smoothed polyline, so adjacent vertices bend only a
+   degree or two. We instead sample the bearing ~W units before and after each
+   point along the route: a real corner shows up as a large bearing change.
+   In SVG coordinates y grows downward, so a POSITIVE bearing delta is a
+   clockwise (right) turn. */
+let navCues=[],navSaid=new Set();
+function ptAtCum(geom,cums,d){
+  if(d<=0)return geom[0];
+  const total=cums[cums.length-1];
+  if(d>=total)return geom[geom.length-1];
+  let i=1;while(i<cums.length&&cums[i]<d)i++;
+  const a=geom[i-1],b=geom[i],seg=cums[i]-cums[i-1]||1,t=(d-cums[i-1])/seg;
+  return [a[0]+t*(b[0]-a[0]),a[1]+t*(b[1]-a[1])];
+}
+function buildNavCues(geom){
+  const cums=[0];
+  for(let i=1;i<geom.length;i++)cums.push(cums[i-1]+dist(geom[i-1],geom[i]));
+  const total=cums[cums.length-1],W=11,out=[];
+  for(let d=W;d<=total-W;d+=3){
+    const a=ptAtCum(geom,cums,d-W),b=ptAtCum(geom,cums,d),c=ptAtCum(geom,cums,d+W);
+    const a1=Math.atan2(b[1]-a[1],b[0]-a[0]),a2=Math.atan2(c[1]-b[1],c[0]-b[0]);
+    let dd=a2-a1;
+    while(dd>Math.PI)dd-=2*Math.PI;
+    while(dd<-Math.PI)dd+=2*Math.PI;
+    const deg=dd*180/Math.PI;
+    if(Math.abs(deg)<32)continue;
+    const last=out[out.length-1];
+    // merge one physical corner (sampled several times) into a single cue
+    if(last&&d-last.cum<26&&Math.sign(deg)===Math.sign(last.deg)){
+      if(Math.abs(deg)>Math.abs(last.deg)){last.cum=d;last.deg=deg;}
+    }else out.push({cum:d,deg});
+  }
+  return out.map(c=>({cum:c.cum,dir:c.deg>0?'right':'left'}));
+}
+function navAnnounceTurn(){
+  if(!window.Siri||!Siri.enabled||!navCues.length)return;
+  const AHEAD=26;                       // start talking ~26 map units before the corner
+  for(const c of navCues){
+    if(navSaid.has('t'+c.cum))continue;
+    const away=c.cum-journeyMaxCum;
+    if(away<=AHEAD&&away>-6){
+      navSaid.add('t'+c.cum);
+      const m=fmtM(Math.max(0,away));
+      Siri.speak(m>=5?`In ${m} meters, turn ${c.dir}.`:`Turn ${c.dir}.`);
+      break;
+    }
+  }
+}
+function navAnnounceStep(li,i,total){
+  if(!window.Siri||!Siri.enabled)return;
+  if(i===0)return;                                   // "Start · ..." needs no callout
+  if(i===total-1){
+    const dp=POIS.find(p=>p.id===destId);
+    Siri.speak(`You have arrived at your destination${dp?', '+dp.name:''}.`);
+    return;
+  }
+  const nm=(li.firstChild&&li.firstChild.textContent||li.textContent||'')
+    .replace(/^(Walk past|Go past)\s+/i,'').trim();
+  if(nm)Siri.speak(`You are now near ${nm}.`);
 }
 /* setup card: destination chosen but journey not started yet */
 function renderSetupCard(){
@@ -974,17 +1069,38 @@ function renderSetupCard(){
     $('startBtn').disabled=true;
   }
 }
-$('pillA').onclick=()=>{if(routes){activeRoute='A';journeyMaxCum=0;drawRoutes();renderRouteCard();fitToActive();window.__sync3D&&window.__sync3D(true);}};
-$('pillB').onclick=()=>{if(routes&&routes.B){activeRoute='B';journeyMaxCum=0;drawRoutes();renderRouteCard();fitToActive();window.__sync3D&&window.__sync3D(true);}};
-$('startBtn').onclick=()=>{
-  if(!routes)return;
+function resetNavCues(){
+  navSaid=new Set();
+  navCues=(journeyOn&&routes&&routes[activeRoute])?buildNavCues(routes[activeRoute].geom):[];
+}
+$('pillA').onclick=()=>{if(routes){activeRoute='A';journeyMaxCum=0;drawRoutes();renderRouteCard();resetNavCues();fitToActive();window.__sync3D&&window.__sync3D(true);}};
+$('pillB').onclick=()=>{if(routes&&routes.B){activeRoute='B';journeyMaxCum=0;drawRoutes();renderRouteCard();resetNavCues();fitToActive();window.__sync3D&&window.__sync3D(true);}};
+function startJourney(){
+  if(!routes)return false;
   journeyOn=true;journeyMaxCum=0;
-  drawRoutes();renderRouteCard();fitToActive();window.__sync3D&&window.__sync3D(true);
-};
-$('exitBtn').onclick=()=>{
+  drawRoutes();renderRouteCard();resetNavCues();fitToActive();window.__sync3D&&window.__sync3D(true);
+  const act=routes[activeRoute],dp=POIS.find(p=>p.id===destId);
+  if(window.Siri&&Siri.enabled){
+    const mins=fmtMin(act.trueLen);
+    // Pressing Start is a real user gesture, so this is the most reliable
+    // moment for audio — force it even if the welcome was blocked earlier.
+    Siri.speak(`Starting the route to ${dp?dp.name:'your destination'}. `
+      +`It is ${fmtM(act.trueLen)} meters, and will take about ${mins} minute${mins===1?'':'s'} `
+      +`${travelMode==='vehicle'?'by car or bike':'on foot'}.`);
+  }
+  return true;
+}
+function exitJourney(){
   journeyOn=false;journeyMaxCum=0;routes=null;destId=null;destSelect.reset('Choose a destination…');
   routeG.innerHTML='';destPin.setAttribute('visibility','hidden');
+  navCues=[];navSaid=new Set();voicePendingMode=false;
   $('routeCard').classList.remove('show','setup','live');window.__sync3D&&window.__sync3D(false);
+}
+$('startBtn').onclick=()=>startJourney();
+$('exitBtn').onclick=()=>{
+  const had=journeyOn||destId;
+  exitJourney();
+  if(had&&window.Siri&&Siri.enabled)Siri.speak('Route cleared.');
 };
 document.querySelectorAll('#travelModes button').forEach(b=>b.onclick=()=>{
   travelMode=b.dataset.tmode;
@@ -1006,6 +1122,7 @@ function setOriginPoi(id){
   if(originSelect.value!==id)originSelect.setValue(id);
   showMe(origin.pt);setLocLine(p.name);
   if(journeyOn)updateStepsProgress();else computeRoutes();
+  voiceOnOriginReady();
 }
 function nearestPoiName(pt){
   let best=null,bd=1e9;
@@ -1027,6 +1144,7 @@ function setOriginPoint(pt,labelPrefix,acc){
   // tick would regenerate a brand-new step list each time and make "passed"
   // state meaningless.
   if(journeyOn)updateStepsProgress();else computeRoutes();
+  voiceOnOriginReady();
 }
 function setDest(id){
   destId=id||null;
@@ -1316,6 +1434,265 @@ setMode('landmark');
 applyView();
 if(window.innerWidth<=880){const F=D.mobileFit||[120,60,1140,820];fitBox(F[0],F[1],F[2],F[3],30);}
 else if(D.desktopFit){const F=D.desktopFit;fitBox(F[0],F[1],F[2],F[3],40);}
+
+/* ═══════════════════════════════════════════════════════════════
+   SARII — conversation, commands and Q&A for this map
+   ═══════════════════════════════════════════════════════════════
+   Guided flows she can run:
+     "take me to X"        → sets X, finds you by GPS, asks walk/drive, starts
+     "I'm near a landmark" → asks which landmark, then destination, then mode
+   Everything below works identically whether spoken or typed, so it still
+   functions in Brave/Firefox where speech recognition is unavailable. */
+let convo='idle';                // idle | landmark | dest | mode
+let voiceAwaitingFix=false;      // waiting on the first GPS fix
+let voicePendingMode=false;      // kept for exitJourney()'s reset
+
+const norm=s=>String(s||'').toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
+/* speech returns "block a one" / "block a1" / "block eight one" — flatten them all */
+const NUMWORD={zero:'0',one:'1',two:'2',three:'3',four:'4',five:'5',six:'6',seven:'7',eight:'8',nine:'9',ten:'10',
+               won:'1',too:'2',to:'2',for:'4',ate:'8',be:'b',bee:'b',see:'c',sea:'c',are:'r',you:'u',why:'y',ex:'x'};
+function squash(s){
+  return norm(s).split(' ').map(w=>NUMWORD[w]!==undefined?NUMWORD[w]:w).join('').replace(/[^a-z0-9]/g,'');
+}
+function matchPOI(text){
+  const q=squash(text); if(q.length<2)return null;
+  let best=null,bestScore=0;
+  for(const p of POIS){
+    const n=squash(p.name);
+    let sc=0;
+    if(n===q)sc=100;
+    else if(q.includes(n))sc=80+n.length;
+    else if(n.includes(q)&&q.length>=3)sc=60+q.length;
+    else{
+      const tw=norm(p.name).split(' ').filter(w=>w.length>2);
+      const hit=tw.filter(w=>norm(text).includes(w)).length;
+      if(hit)sc=30+hit*10;
+    }
+    if(sc>bestScore){bestScore=sc;best=p;}
+  }
+  return bestScore>=40?best:null;
+}
+const resortName=(typeof RESORT_META!=='undefined'&&RESORT_META.name)?RESORT_META.name:'the resort';
+const catNames=c=>POIS.filter(p=>p.cat===c).map(p=>p.name);
+function listOf(arr,max){
+  const a=arr.slice(0,max||6); if(!a.length)return '';
+  return a.length===1?a[0]:a.slice(0,-1).join(', ')+' and '+a[a.length-1];
+}
+function routeSummary(){
+  if(!routes)return null;
+  const act=routes[activeRoute],dp=POIS.find(p=>p.id===destId),mins=fmtMin(act.trueLen);
+  return `${dp?dp.name:'Your destination'} is ${fmtM(act.trueLen)} meters away, about `
+    +`${mins} minute${mins===1?'':'s'} ${travelMode==='vehicle'?'by car or bike':'on foot'}.`;
+}
+
+/* ── the guided steps ── */
+function askTravelMode(){ convo='mode'; voicePendingMode=true;
+  Siri.speak('Would you like to walk, or go by car or bike?'); }
+function askDestination(){ convo='dest';
+  Siri.speak('Where would you like to go?'); }
+function askLandmark(){ convo='landmark'; setMode('landmark');
+  Siri.speak('Which landmark are you near?'); }
+/* "take me to X" always locates the guest by GPS unless we already know where
+   they are — that is the default the guest asked for. */
+function beginRouteTo(p){
+  destSelect.setValue(p.id); setDest(p.id);
+  if(origin){ askTravelMode(); return; }
+  voiceAwaitingFix=true; convo='idle'; setMode('gps');
+  Siri.speak(`Setting route to ${p.name}. Finding your location with G P S.`);
+}
+/* called whenever a start position lands (landmark, tap, or a GPS fix) */
+function voiceOnOriginReady(){
+  if(!window.Siri||!Siri.enabled)return;
+  if(!voiceAwaitingFix)return;
+  voiceAwaitingFix=false;
+  if(destId)askTravelMode(); else askDestination();
+}
+
+/* ── everything she can answer ──────────────────────────────────
+   Ordered AFTER navigation matching, so "take me to Block A1" routes
+   instead of being answered as a question about room blocks. */
+const QA=[
+ {re:/\b(hello|hi|hey|namaste|good (morning|afternoon|evening|night))\b/,
+  a:()=>'Hello! How can I help you today?'},
+ {re:/\b(your name|who are you|what are you|about you|are you real|who made you)\b/,
+  a:()=>`My name is Siri. I am your guide here at Club Mahindra ${resortName}. I can show you around the resort.`},
+ {re:/\b(thank|thanks|shukriya)\b/, a:()=>'Happy to help. Enjoy your stay.'},
+ {re:/\b(bye|goodbye|see you|good night)\b/, a:()=>'Goodbye, and enjoy your stay at the resort.'},
+ {re:/\bwhat.*\btime\b|\btime (is it|now)\b/,
+  a:()=>'It is '+new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})+'.'},
+ {re:/\b(what|which)\b.*\b(day|date)\b|\btoday\b/,
+  a:()=>'Today is '+new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'})+'.'},
+ {re:/\b(eat|food|restaurant|dining|dine|breakfast|lunch|dinner|hungry|meal|cafe|coffee|snack)/,
+  a:()=>{const n=catNames('dine');
+    return n.length?`For food you can go to ${listOf(n)}. Say, take me to ${n[0]}, and I will guide you there.`
+                   :'Dining details are being added for this resort. Please check with reception.';}},
+ {re:/\b(activit|things to do|what can i do|entertainment|fun|sport|game|play)/,
+  a:()=>{const n=catNames('act');
+    return n.length?`You can enjoy ${listOf(n)}. Say, take me to any of these, and I will show you the way.`
+                   :'Activity details are being added for this resort.';}},
+ {re:/\b(facilit|amenit|service)/,
+  a:()=>{const n=catNames('fac');
+    return n.length?`The resort facilities include ${listOf(n)}.`:'Facility details are being added.';}},
+ {re:/\b(room|block|accommodation|where.*(stay|sleep))/,
+  a:()=>{const n=catNames('room');
+    return n.length?`The room blocks here are ${listOf(n,8)}. Tell me your block number and I will guide you to it.`
+                   :'Room block details are being added.';}},
+ {re:/\b(wifi|wi fi|internet|password|network)/,
+  a:()=>'For the WiFi name and password, please check the card in your room or ask at reception.'},
+ {re:/\b(check ?out|check ?in|booking|reservation|luggage|room service|housekeeping|laundry|towel)/,
+  a:()=>'Reception can help you with that. Say, take me to reception, and I will guide you there.'},
+ {re:/\b(emergency|fire|ambulance|doctor|medical|hospital|first aid|unwell|help me)/,
+  a:()=>{const f=POIS.find(p=>/fire|medical|clinic/i.test(p.name));
+    return 'In an emergency, please contact resort staff or reception immediately.'
+      +(f?` The ${f.name} is also marked on the map.`:'');}},
+ {re:/\b(nearby|near by|around|attraction|sightsee|tourist|outside|visit|excursion|day trip)/,
+  a:()=>{const items=(typeof NEARBY!=='undefined'&&NEARBY[RID])?NEARBY[RID].slice(0,4):null;
+    return items&&items.length
+      ? 'Nearby you can visit '+items.map(p=>`${p.name}, about ${p.km} kilometers away`).join('; ')
+        +'. Tap any of them in the list to open driving directions.'
+      : 'A list of nearby places is being prepared for this resort.';}},
+ {re:/\b(weather|rain|temperature|hot|cold)\b/,
+  a:()=>'I do not have live weather information. Reception can tell you the forecast for today.'},
+ {re:/\bhow (many|much)\b.*\b(place|point|location|spot)\b/,
+  a:()=>`There are ${POIS.length} places marked on this resort map.`},
+ {re:/\b(where am i|my location|current location|am i)\b/,
+  a:()=>origin?`You are at ${origin.label}.`
+              :'I do not know where you are yet. Say, use G P S, or say, I am near a landmark.'},
+ {re:/\b(lost|confused|find my way|which way)\b/,
+  a:()=>'No problem. Tell me where you would like to go, and I will guide you step by step.'},
+ {re:/\b(3d|three d|2d|two d|map view)\b/,
+  a:()=>'You can switch between the 2D and 3D views using the buttons at the top left of the map.'},
+ {re:/\b(language|hindi|marathi|speak)\b/,
+  a:()=>'I speak English at the moment. More languages may be added later.'},
+ {re:/\b(pool|swim)\b/, a:()=>null},        // handled as a place, see below
+];
+
+function answerQA(text){
+  const t=norm(text);
+  for(const item of QA){
+    if(item.re.test(t)){
+      const ans=item.a();
+      if(ans){ Siri.speak(ans); return true; }
+    }
+  }
+  return false;
+}
+
+/* A bare greeting is a wake-up, not a question: "hi", "hello", "hmm", "siri".
+   Anything longer ("hello, take me to the pool") is treated as a real request,
+   with the wake word simply stripped off the front. */
+const WAKE=/^(h+i+|h+e+y+|h+e+l+o+|h+e+l+l+o+|hmm+|hm+|mm+|yo|siri|hi siri|hey siri|hello siri|ok siri|okay siri|excuse me|are you there|you there|listen)[\s!.?,]*$/;
+const WAKE_PREFIX=/^\s*(ok(ay)?\s+|hey\s+|hi\s+|hello\s+)?siri[\s,.!]*/i;
+const WAKE_REPLIES=['Hi! How can I help you?','Hello! How can I help you?','Yes? How can I help you?'];
+function wakeReply(){ return WAKE_REPLIES[Math.floor(Math.random()*WAKE_REPLIES.length)]; }
+
+function siriCommand(said,alts){
+  let all=(alts&&alts.length?alts:[said]);
+  // strip a leading "siri"/"hey siri" so "siri take me to the pool" still works
+  all=all.map(a=>String(a).replace(WAKE_PREFIX,'').trim()||String(a));
+  said=all[0];
+  const t=norm(said);
+  if(!t)return false;
+  const any=re=>all.some(a=>re.test(norm(a)));
+  const findPOI=()=>{ for(const a of all){ const p=matchPOI(a); if(p)return p; } return null; };
+
+  /* ── 0. wake word / greeting ── */
+  if(all.some(a=>WAKE.test(norm(a)))){
+    convo='idle';
+    Siri.speak(wakeReply());
+    return true;
+  }
+
+  /* ── 1. control commands, always available ── */
+  if(any(/\b(exit|stop|cancel|clear|end route|never mind|forget it)\b/)){
+    convo='idle';
+    if(!destId&&!journeyOn){Siri.speak('There is no route running.');return true;}
+    exitJourney();Siri.speak('Route cleared.');return true;
+  }
+  if(any(/\b(repeat|say again|pardon|again)\b/)){ Siri.repeat(); return true; }
+  if(any(/\b(help|what can you do|what can i say|commands|options|guide me)\b/)){
+    Siri.speak('You can say: take me to the swimming pool. Or, I am near a landmark. '
+      +'You can ask how far it is, where am I, what is there to eat, what activities are here, '
+      +'or what is nearby. Say start to begin the route, and exit to clear it.');
+    return true;
+  }
+  if(any(/\b(use )?(gps|satellite|locate me|find me|my position)\b/)){
+    voiceAwaitingFix=true;convo='idle';setMode('gps');
+    Siri.speak('Finding your location with G P S.');return true;
+  }
+  if(any(/\b(near a landmark|near landmark|by a landmark|landmark|i am near|im near|next to)\b/)&&!findPOI()){
+    askLandmark();return true;
+  }
+  if(any(/\b(tap the map|tap map|i will tap|choose on map)\b/)){
+    convo='idle';setMode('tap');Siri.speak('Please tap your position on the map.');return true;
+  }
+  if(any(/\b(how far|how long|distance|how much time|eta|time to reach)\b/)){
+    const s=routeSummary();
+    Siri.speak(s||'No route is set yet. Tell me where you would like to go.');return true;
+  }
+  if(any(/\b(start|begin|go now|lets go|let us go|navigate now)\b/)&&!/\bstart(ing)? (point|from)\b/.test(t)){
+    if(journeyOn){Siri.speak('We are already on the way.');return true;}
+    if(!destId){askDestination();return true;}
+    if(!routes){Siri.speak('I still need to know where you are. Say, use G P S, or, I am near a landmark.');return true;}
+    convo='idle';startJourney();return true;
+  }
+
+  /* ── 2. answering whatever she just asked ── */
+  if(convo==='mode'&&any(/\b(walk|walking|foot|by foot|car|bike|drive|driving|vehicle|cycle|buggy|scooter)\b/)){
+    const veh=any(/\b(car|bike|drive|driving|vehicle|cycle|buggy|scooter)\b/);
+    convo='idle';voicePendingMode=false;
+    travelMode=veh?'vehicle':'walk';
+    document.querySelectorAll('#travelModes button').forEach(x=>x.classList.toggle('on',x.dataset.tmode===travelMode));
+    if(journeyOn)renderRouteCard();else renderSetupCard();
+    if(!routes){Siri.speak('I still need to know where you are. Say, use G P S, or, I am near a landmark.');return true;}
+    startJourney();return true;
+  }
+  if(convo==='landmark'){
+    const p=findPOI();
+    if(p){
+      voiceAwaitingFix=false;
+      setOriginPoi(p.id);
+      Siri.speak(`Good, you are near ${p.name}.`);
+      setTimeout(()=>{ if(destId)askTravelMode(); else askDestination(); },900);
+      return true;
+    }
+    Siri.speak('I did not recognise that landmark. You can say, for example, reception, or the swimming pool.');
+    return true;
+  }
+  if(convo==='dest'){
+    const p=findPOI();
+    if(p){ convo='idle'; destSelect.setValue(p.id); setDest(p.id);
+      if(origin)askTravelMode(); else { voiceAwaitingFix=true; setMode('gps');
+        Siri.speak(`Setting route to ${p.name}. Finding your location with G P S.`); }
+      return true; }
+    Siri.speak('I did not catch that place. You can say, for example, the swimming pool, or reception.');
+    return true;
+  }
+
+  /* ── 3. an explicit navigation request ── */
+  if(any(/\b(take me|guide me|show me|route|navigate|direction|how do i get|where is|way to|go to|lead me)\b/)){
+    const p=findPOI();
+    if(p){ convo='idle'; beginRouteTo(p); return true; }
+    askDestination(); return true;
+  }
+
+  /* ── 4. general questions ── */
+  if(answerQA(said)) return true;
+
+  /* ── 5. a bare place name means "take me there" ── */
+  const p=findPOI();
+  if(p){ convo='idle'; beginRouteTo(p); return true; }
+
+  return false;   // let Siri say she didn't catch it
+}
+
+if(window.Siri){
+  Siri.configure({
+    welcome:`Welcome to Club Mahindra ${resortName}. My name is Siri. How can I help you?`,
+    hint:'Sorry, I did not catch that. You can say, take me to the swimming pool, or say help.',
+    onCommand:siriCommand
+  });
+}
 </script>
 
 <script>
