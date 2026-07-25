@@ -71,6 +71,8 @@ h1{font-family:'Bricolage Grotesque',serif;font-weight:700;font-size:clamp(34px,
 .sub{color:var(--muted);font-size:15.5px}
 .stats{display:flex;gap:10px;justify-content:center;margin-top:16px;flex-wrap:wrap}
 .voiceRow{display:flex;justify-content:center;margin-top:26px;position:relative;z-index:1}
+.voiceNote{text-align:center;color:var(--faint);font-size:12.5px;line-height:1.6;margin-top:9px;
+  max-width:420px;margin-left:auto;margin-right:auto;position:relative;z-index:1}
 .stat{background:#16241B;border:1px solid var(--line);border-radius:999px;padding:7px 15px;
   font:600 12px 'Spline Sans Mono',monospace;color:var(--muted)}
 .stat b{color:var(--marigold);font-weight:600}
@@ -186,6 +188,8 @@ h1{font-family:'Bricolage Grotesque',serif;font-weight:700;font-size:clamp(34px,
 </section>
 
 <div class="voiceRow" id="voiceToggleHost"></div>
+<p class="voiceNote">Directions are spoken on their own while you walk. Switch this on if you also want
+to ask Siri questions out loud.</p>
 
 <script src="resorts-data.js"></script>
 <script src="assistant.js"></script>
@@ -428,18 +432,16 @@ function siriHome(said,alts){
   return false;
 }
 if(window.Siri){
-  // The sign-in page already said the welcome out loud (inside the click
-  // gesture, where audio is reliably allowed) — don't say it a second time.
-  let justGreeted=false;
-  try{ justGreeted = sessionStorage.getItem('cmr_greeted')==='1';
-       if(justGreeted) sessionStorage.removeItem('cmr_greeted'); }catch(e){}
-  if(justGreeted) Siri.greeted=true;
+  // No welcome here: the sign-in page already said it out loud, inside the click
+  // gesture where audio is reliably allowed. Siri carries an "already greeted"
+  // mark for the whole tab, so this line is only ever reached by a guest who
+  // switches her on having somehow missed it.
   Siri.configure({
     welcome:'Welcome to Club Mahindra Resorts. My name is Siri. How can I help you?',
     hint:'Sorry, I did not catch that. Say the name of a resort, or say help.',
     onCommand:siriHome
   });
-  Siri.mountToggle('voiceToggleHost','Voice assistant');
+  Siri.mountToggle('voiceToggleHost','Ask Siri');
 }
 </script>
 </body>

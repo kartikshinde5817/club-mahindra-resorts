@@ -21,17 +21,40 @@
 
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 const synth = window.speechSynthesis;
+
+/* Two independent switches, because they answer different needs:
+     cmr_voice     — the conversational assistant (microphone, wake word,
+                     questions & answers). OFF unless the guest turns it on.
+     cmr_nav_voice — spoken navigation: "starting the route…", turn calls,
+                     "you are near…", "you have arrived". ON by default,
+                     because that is the part everyone expects to just work. */
 const LS_KEY = 'cmr_voice';
+const LS_NAV = 'cmr_nav_voice';
+const SS_GREET = 'cmr_greeted';      // per-tab: "this guest already heard the welcome"
 
 const Siri = {
-  enabled:false, greeted:false, listening:false, speaking:false,
+  enabled:false, navVoice:true, greeted:false, listening:false, speaking:false,
   recog:null, voice:null, lastSpoken:'', micDenied:false, errCount:0,
   cfg:{ welcome:'', onCommand:null, hint:'' },
+
+  _readFlags(){
+    try{
+      this.enabled  = localStorage.getItem(LS_KEY)==='1';   // OFF unless switched on
+      this.navVoice = localStorage.getItem(LS_NAV)!=='0';   // ON unless switched off
+    }catch(e){ this.enabled=false; this.navVoice=true; }
+    if(this._greetedThisSession()) this.greeted=true;
+  },
+
+  /* The welcome belongs to the session, not the page: it is spoken once when
+     the guest signs in, and every page afterwards knows it has been said. Since
+     sign-in is per-tab, that works out to exactly one welcome per visit. */
+  _greetedThisSession(){ try{ return sessionStorage.getItem(SS_GREET)==='1'; }catch(e){ return false; } },
+  markGreeted(){ this.greeted=true; try{ sessionStorage.setItem(SS_GREET,'1'); }catch(e){} },
 
   /* ── page setup ─────────────────────────────────────────── */
   configure(cfg){
     Object.assign(this.cfg, cfg||{});
-    this.enabled = localStorage.getItem(LS_KEY)!=='0';   // on unless switched off
+    this._readFlags();
     this._buildUI();
     if(synth) synth.onvoiceschanged = ()=>this._pickVoice();
     if(this.enabled){
@@ -82,7 +105,7 @@ const Siri = {
     this._voicesReady().then(()=>{
       this._pickVoice();
       this._utter(this.cfg.welcome,{
-        onStart:()=>{ this.greeted=true; this._greetInFlight=false; this._showUnlock(false); },
+        onStart:()=>{ this.markGreeted(); this._greetInFlight=false; this._showUnlock(false); },
         onBlocked:()=>{ this._greetInFlight=false; this._showUnlock(true); }
       });
     });
@@ -102,6 +125,20 @@ const Siri = {
   },
   repeat(){ if(this.lastSpoken) this.speak(this.lastSpoken); },
 
+  /* Spoken navigation — route start, turn calls, landmarks, arrival. This is
+     deliberately NOT tied to `enabled`: the guest can leave the question-and-
+     answer assistant switched off and still be talked through the walk. */
+  sayNav(text,opts){
+    if(!this.navVoice||!text||!synth) return;
+    this.lastSpoken = text;
+    this._utter(text, Object.assign({},opts||{}));
+  },
+  setNavVoice(on){
+    this.navVoice=!!on;
+    try{ localStorage.setItem(LS_NAV, this.navVoice?'1':'0'); }catch(e){}
+    if(!this.navVoice && !this.enabled){ try{ synth&&synth.cancel(); }catch(e){} this.speaking=false; }
+  },
+
   /* Speak, then run `done` when the line finishes (or after maxWait, so a
      silent/blocked engine can never strand the caller). Used by the sign-in
      page: the click is a real user gesture, which is the one moment audio is
@@ -110,7 +147,9 @@ const Siri = {
   speakThen(text,done,maxWait){
     let fired=false;
     const go=()=>{ if(fired)return; fired=true; try{done&&done();}catch(e){} };
-    if(!this.enabled||!synth||!text){ go(); return; }
+    // No `enabled` check on purpose — the caller has already decided this line
+    // should be said (the sign-in welcome is spoken even with Q&A switched off).
+    if(!synth||!text){ go(); return; }
     this.lastSpoken=text;
     const t=setTimeout(go, maxWait||3500);
     this._utter(text,{
@@ -146,7 +185,8 @@ const Siri = {
     // voice list. Forcing a voice/lang we cannot verify makes it silent, so we
     // only set them when a real voice was found and otherwise use the defaults.
     if(this.voice){ u.voice = this.voice; if(this.voice.lang) u.lang = this.voice.lang; }
-    u.rate = 1.0; u.pitch = 1.05; u.volume = 1;
+    const tone = this._tone();
+    u.rate = tone.rate; u.pitch = tone.pitch; u.volume = 1;
     this.speaking = true;
     this._setBubble(text);
     let started=false, settled=false;
@@ -176,21 +216,73 @@ const Siri = {
     },1500);
   },
 
+  /* ── choosing the voice ─────────────────────────────────────────
+     Every operating system ships its own text-to-speech engine, so no two
+     devices can be given the *same* voice — there is no way to bundle one
+     without a paid cloud TTS service. What we can do is always reach for the
+     same KIND of voice: the calm, natural, female English voice each platform
+     offers, in the order below, so an iPhone, an Android and a laptop all
+     sound as close to one another (and to Siri) as the device allows.
+
+     Named first, best first, per platform. Anything not listed still gets
+     scored on language / gender / "natural" below. */
+  _voiceRank(name){
+    const N = String(name||'').toLowerCase();
+    const PREFERRED = [
+      /* Apple — iOS & macOS. Samantha IS the classic Siri-family timbre. */
+      'samantha','ava','allison','susan','zoe','serena','karen','tessa','moira','fiona',
+      /* Microsoft — Windows/Edge. "Online (Natural)" voices are neural and soft.
+         Ana is deliberately absent: it is a child voice. */
+      'neerja','aria','jenny','sonia','libby','michelle','heera','hazel','zira',
+      /* Google — Android & Chrome. */
+      'google uk english female','google us english','google english'
+    ];
+    /* Whole words only — otherwise "ava" would also match names that merely
+       contain those three letters. */
+    for(let i=0;i<PREFERRED.length;i++){
+      const p=PREFERRED[i];
+      if(new RegExp('(^|[^a-z])'+p.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'([^a-z]|$)').test(N))
+        return PREFERRED.length-i;
+    }
+    return 0;
+  },
   _pickVoice(){
     if(!synth) return;
     const vs = synth.getVoices()||[];
-    if(!vs.length) return;
-    const female = /female|woman|samantha|zira|google uk english female|aria|neerja|heera|veena|salli|joanna/i;
+    if(!vs.length) return;                        // Brave hides the list — use the default
+    const female = /female|woman|samantha|ava|allison|susan|zoe|serena|karen|tessa|moira|fiona|zira|aria|jenny|sonia|libby|michelle|neerja|heera|veena|salli|joanna|kalpana|lekha/i;
+    const male   = /male\b|man\b|rishi|daniel|alex|fred|oliver|ryan|guy|david|mark|prabhat|hemant/i;
+    /* "compact"/"eloquence" are the old robotic Apple voices; novelty voices
+       (Albert, Bad News, …) are jokes. Both are the opposite of soft. */
+    const harsh  = /compact|eloquence|novelty|albert|bad news|bahh|bells|boing|bubbles|cellos|deranged|hysterical|pipe organ|trinoids|whisper|zarvox|jester|superstar|wobble|grandma|grandpa|rocko|shelley|sandy|flo|reed|eddy/i;
     const score = v=>{
-      let s=0;
-      if(/^en[-_]IN/i.test(v.lang)) s+=6;         // Indian English preferred
-      else if(/^en[-_]GB/i.test(v.lang)) s+=4;
-      else if(/^en/i.test(v.lang)) s+=3;
-      if(female.test(v.name)) s+=3;               // Siri reads as female
-      if(/google/i.test(v.name)) s+=1;
+      let s = this._voiceRank(v.name) * 10;       // a named favourite wins outright
+      if(/^en[-_]IN/i.test(v.lang)) s+=9;         // Indian English first — Indian resorts
+      else if(/^en[-_]GB/i.test(v.lang)) s+=6;
+      else if(/^en[-_](US|AU|NZ|IE|ZA)/i.test(v.lang)) s+=5;
+      else if(/^en/i.test(v.lang)) s+=4;
+      else s-=25;                                 // never read English in a non-English voice
+      if(/natural|neural|enhanced|premium|siri/i.test(v.name)) s+=8;   // the soft ones
+      if(female.test(v.name)) s+=5;
+      if(male.test(v.name)) s-=6;
+      if(harsh.test(v.name)) s-=30;
+      if(v.localService===false) s+=1;            // cloud/neural voices sound better
       return s;
     };
-    this.voice = vs.slice().sort((a,b)=>score(b)-score(a))[0] || null;
+    const best = vs.slice().sort((a,b)=>score(b)-score(a))[0] || null;
+    if(best && score(best) <= 0) return;          // nothing decent — leave the default alone
+    this.voice = best;
+  },
+
+  /* Same intent everywhere, with a small per-engine correction: Google's
+     Android voice reads brighter and quicker than Apple's at identical
+     numbers, so it gets nudged down to match. Unhurried and level is what
+     makes a voice sound "soft" — not volume. */
+  _tone(){
+    const n=(this.voice&&this.voice.name||'').toLowerCase();
+    if(/google/.test(n))     return {rate:0.92, pitch:0.96};
+    if(/microsoft/.test(n))  return {rate:0.95, pitch:1.00};
+    return {rate:0.95, pitch:1.00};               // Apple, Samsung, and unknown engines
   },
 
   /* No visible unlock prompt by design — if the browser blocks audio we simply
@@ -303,8 +395,10 @@ const Siri = {
       this.micDenied=false; this.errCount=0; this.audioBlocked=false;
       this._showUnlock(false);
       // A toggle click IS a user gesture, so this is the reliable moment to speak.
-      this.speak(this.greeted? 'Voice assistant is on. How can I help you?' : this.cfg.welcome, {force:true});
-      this.greeted=true;
+      // The full welcome is only for a guest who somehow never heard it at sign-in.
+      this.speak((this.greeted||!this.cfg.welcome)
+        ? 'Voice assistant is on. How can I help you?' : this.cfg.welcome, {force:true});
+      this.markGreeted();
       this._startRecog();
     }else{
       try{ synth&&synth.cancel(); }catch(e){}
@@ -391,10 +485,17 @@ const Siri = {
     }
     // No speech recognition at all (Firefox, older Safari) → typing is the way in.
     if(!SR){ this.micDenied=true; }
-    // one-line diagnostic — makes "why is she silent?" answerable from devtools
+    // one-line diagnostic — makes "why is she silent?" (and "why does she sound
+    // different on my phone?") answerable straight from devtools
     try{
-      console.log('[Siri] ready · speech:'+(!!synth)+' mic:'+(!!SR)
-        +' enabled:'+this.enabled+' secure:'+window.isSecureContext);
+      this._voicesReady().then(()=>{
+        this._pickVoice();
+        const t=this._tone();
+        console.log('[Siri] ready · speech:'+(!!synth)+' mic:'+(!!SR)
+          +' qa:'+this.enabled+' nav:'+this.navVoice+' secure:'+window.isSecureContext
+          +' voice:'+(this.voice?this.voice.name+' ('+this.voice.lang+')':'browser default')
+          +' rate:'+t.rate+' pitch:'+t.pitch);
+      });
     }catch(e){}
   },
   _paint(){
@@ -417,6 +518,12 @@ const Siri = {
     this._bubT=setTimeout(()=>el.classList.remove('show'), Math.min(9000, 2600+text.length*45));
   }
 };
+
+/* Read the switches immediately, so a page that never calls configure()
+   (the sign-in screen) still knows whether it may speak. */
+Siri._readFlags();
+if(synth) try{ synth.addEventListener('voiceschanged',()=>Siri._pickVoice()); }catch(e){}
+Siri._pickVoice();
 
 window.Siri = Siri;
 })();

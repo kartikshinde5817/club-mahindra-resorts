@@ -1027,8 +1027,10 @@ function buildNavCues(geom){
   }
   return out.map(c=>({cum:c.cum,dir:c.deg>0?'right':'left'}));
 }
+/* Route calls use sayNav(), not speak(): they are on by default and keep
+   working even when the question-and-answer assistant is switched off. */
 function navAnnounceTurn(){
-  if(!window.Siri||!Siri.enabled||!navCues.length)return;
+  if(!window.Siri||!navCues.length)return;
   const AHEAD=26;                       // start talking ~26 map units before the corner
   for(const c of navCues){
     if(navSaid.has('t'+c.cum))continue;
@@ -1036,22 +1038,22 @@ function navAnnounceTurn(){
     if(away<=AHEAD&&away>-6){
       navSaid.add('t'+c.cum);
       const m=fmtM(Math.max(0,away));
-      Siri.speak(m>=5?`In ${m} meters, turn ${c.dir}.`:`Turn ${c.dir}.`);
+      Siri.sayNav(m>=5?`In ${m} meters, turn ${c.dir}.`:`Turn ${c.dir}.`);
       break;
     }
   }
 }
 function navAnnounceStep(li,i,total){
-  if(!window.Siri||!Siri.enabled)return;
+  if(!window.Siri)return;
   if(i===0)return;                                   // "Start · ..." needs no callout
   if(i===total-1){
     const dp=POIS.find(p=>p.id===destId);
-    Siri.speak(`You have arrived at your destination${dp?', '+dp.name:''}.`);
+    Siri.sayNav(`You have arrived at your destination${dp?', '+dp.name:''}.`);
     return;
   }
   const nm=(li.firstChild&&li.firstChild.textContent||li.textContent||'')
     .replace(/^(Walk past|Go past)\s+/i,'').trim();
-  if(nm)Siri.speak(`You are now near ${nm}.`);
+  if(nm)Siri.sayNav(`You are now near ${nm}.`);
 }
 /* setup card: destination chosen but journey not started yet */
 function renderSetupCard(){
@@ -1080,11 +1082,11 @@ function startJourney(){
   journeyOn=true;journeyMaxCum=0;
   drawRoutes();renderRouteCard();resetNavCues();fitToActive();window.__sync3D&&window.__sync3D(true);
   const act=routes[activeRoute],dp=POIS.find(p=>p.id===destId);
-  if(window.Siri&&Siri.enabled){
+  if(window.Siri){
     const mins=fmtMin(act.trueLen);
     // Pressing Start is a real user gesture, so this is the most reliable
     // moment for audio — force it even if the welcome was blocked earlier.
-    Siri.speak(`Starting the route to ${dp?dp.name:'your destination'}. `
+    Siri.sayNav(`Starting the route to ${dp?dp.name:'your destination'}. `
       +`It is ${fmtM(act.trueLen)} meters, and will take about ${mins} minute${mins===1?'':'s'} `
       +`${travelMode==='vehicle'?'by car or bike':'on foot'}.`);
   }
@@ -1100,7 +1102,7 @@ $('startBtn').onclick=()=>startJourney();
 $('exitBtn').onclick=()=>{
   const had=journeyOn||destId;
   exitJourney();
-  if(had&&window.Siri&&Siri.enabled)Siri.speak('Route cleared.');
+  if(had&&window.Siri)Siri.sayNav('Route cleared.');
 };
 document.querySelectorAll('#travelModes button').forEach(b=>b.onclick=()=>{
   travelMode=b.dataset.tmode;
@@ -1687,8 +1689,10 @@ function siriCommand(said,alts){
 }
 
 if(window.Siri){
+  // Deliberately no `welcome` on the map. The guest was already greeted once,
+  // at sign-in; opening a resort must not repeat it. Switching her on here says
+  // the short "Voice assistant is on" line instead.
   Siri.configure({
-    welcome:`Welcome to Club Mahindra ${resortName}. My name is Siri. How can I help you?`,
     hint:'Sorry, I did not catch that. You can say, take me to the swimming pool, or say help.',
     onCommand:siriCommand
   });

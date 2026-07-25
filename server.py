@@ -59,11 +59,6 @@ def main() -> None:
                 print()
                 print(f"   On guest phones (same WiFi):  {url_lan}")
                 print(f"   On this computer:             {url_me}")
-                print()
-                print("   Tip: make a QR code of the first link and")
-                print("   print it at Reception — guests just scan it.")
-                print()
-                print("   Press Ctrl+C to stop.")
                 print("  ─────────────────────────────────────────────")
                 print()
                 try:
