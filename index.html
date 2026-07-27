@@ -434,10 +434,10 @@ function siriHome(said,alts){
   return false;
 }
 if(window.Siri){
-  // No welcome here: the sign-in page already said it out loud, inside the click
-  // gesture where audio is reliably allowed. Siri carries an "already greeted"
-  // mark for the whole tab, so this line is only ever reached by a guest who
-  // switches her on having somehow missed it.
+  // The welcome is spoken here, the moment the dashboard opens after sign-in —
+  // configure() tries right away and again on the guest's first tap if the
+  // browser blocked it. "Already greeted" is remembered for the whole tab, so
+  // going to a resort map and back does not say it a second time.
   Siri.configure({
     welcome:'Welcome to Club Mahindra Resorts. My name is Siri. How can I help you?',
     hint:'Sorry.',                        // asked something she cannot answer — nothing more

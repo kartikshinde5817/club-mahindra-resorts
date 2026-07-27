@@ -79,15 +79,14 @@ input:focus-visible{outline:2px solid var(--marigold);outline-offset:2px}
 
 <div class="note">This is a local, single-file dashboard — sign-in is a simple gate,<br>not a secure login system.</div>
 
-<script src="assistant.js"></script>
 <script>
 'use strict';
 const $=id=>document.getElementById(id);
 const params=new URLSearchParams(location.search);
 const next=params.get('next')||'index.html';
-/* Siri is loaded here only to speak the welcome on sign-in — no mic button and
-   no greeting while the form is on screen, so configure() is never called.
-   She reads her own on/off switches when the script loads. */
+/* No voice here — Siri says the welcome once the dashboard itself has opened,
+   not on this click. Speaking here and then navigating risked cutting her off
+   mid-sentence if the line took longer to finish than the wait allowed. */
 
 $('loginForm').addEventListener('submit',e=>{
   e.preventDefault();
@@ -96,15 +95,7 @@ $('loginForm').addEventListener('submit',e=>{
     // sessionStorage is per-tab, so every new tab has to sign in again.
     sessionStorage.setItem('cmr_auth','1');
     sessionStorage.setItem('cmr_auth_at',String(Date.now()));  // also expires after 1 hour
-    const go=()=>location.replace(next);
-    // Speaking here is deliberate: this click is a real user gesture, the one
-    // moment browsers reliably allow audio. It is also the ONLY welcome — every
-    // page afterwards sees the "already greeted" mark and stays quiet, so a
-    // guest opening a resort map never hears it a second time.
-    if(window.Siri&&Siri.supported()&&(Siri.navVoice||Siri.enabled)){
-      Siri.markGreeted();
-      Siri.speakThen('Welcome to Club Mahindra Resorts. My name is Siri. How can I help you?',go,4000);
-    }else go();
+    location.replace(next);
   }else{
     $('err').textContent='Incorrect username or password.';
     $('pass').value='';

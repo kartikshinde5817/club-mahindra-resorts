@@ -57,26 +57,31 @@ const Siri = {
     this._readFlags();
     this._buildUI();
     if(synth) synth.onvoiceschanged = ()=>this._pickVoice();
+    // The welcome is spoken directions' job (on by default) — it must not
+    // depend on the Ask Siri Q&A switch, which defaults OFF. The microphone,
+    // on the other hand, is a Q&A feature and only opens when that is on.
+    const wantsGreeting = this.navVoice || this.enabled;
     if(this.enabled){
       // She was switched on before this page loaded — the guest did it on the
       // main page. Microphone permission is already granted for this origin, so
       // open the ear straight away rather than waiting for a tap: otherwise she
       // looks "on" while hearing nothing, and the guest switches her on again.
       this._startRecog();
+    }
+    if(wantsGreeting){
       this._tryGreet();
       // Some browsers ignore speak() issued while the page is still parsing,
       // so try again at the points where the engine is reliably awake.
       if(document.readyState!=='complete')
         window.addEventListener('load',()=>{ if(!this.greeted) this._tryGreet(true); },{once:true});
-      setTimeout(()=>{ if(!this.greeted) this._tryGreet(true); this._startRecog(); },900);
+      setTimeout(()=>{ if(!this.greeted) this._tryGreet(true); if(this.enabled) this._startRecog(); },900);
     }
     // Audio and the microphone both need a real user gesture in most browsers,
     // so ANY first interaction re-attempts the greeting and opens the mic.
     const arm = ()=>{
-      if(!this.enabled) return;
-      if(!this.greeted) this._tryGreet(true);
-      this._startRecog();
-      if(this.greeted){
+      if(wantsGreeting && !this.greeted) this._tryGreet(true);
+      if(this.enabled) this._startRecog();
+      if(!wantsGreeting || this.greeted){
         ['pointerdown','touchstart','click','keydown','scroll'].forEach(ev=>
           document.removeEventListener(ev,arm,true));
       }
@@ -142,25 +147,6 @@ const Siri = {
     this.navVoice=!!on;
     try{ localStorage.setItem(LS_NAV, this.navVoice?'1':'0'); }catch(e){}
     if(!this.navVoice && !this.enabled){ try{ synth&&synth.cancel(); }catch(e){} this.speaking=false; }
-  },
-
-  /* Speak, then run `done` when the line finishes (or after maxWait, so a
-     silent/blocked engine can never strand the caller). Used by the sign-in
-     page: the click is a real user gesture, which is the one moment audio is
-     guaranteed to be allowed — so the welcome is spoken there, before we
-     navigate to the dashboard. */
-  speakThen(text,done,maxWait){
-    let fired=false;
-    const go=()=>{ if(fired)return; fired=true; try{done&&done();}catch(e){} };
-    // No `enabled` check on purpose — the caller has already decided this line
-    // should be said (the sign-in welcome is spoken even with Q&A switched off).
-    if(!synth||!text){ go(); return; }
-    this.lastSpoken=text;
-    const t=setTimeout(go, maxWait||3500);
-    this._utter(text,{
-      onEnd:()=>{ clearTimeout(t); setTimeout(go,180); },
-      onBlocked:()=>{ clearTimeout(t); go(); }
-    });
   },
 
   /* Core speech call. `onStart` fires only when audio genuinely begins, and

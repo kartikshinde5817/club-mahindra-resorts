@@ -847,16 +847,37 @@ function dijkstra(adj,src,dst,penal){
 }
 
 /* ═══════════ ROUTES (primary + alternative) ═══════════ */
-let origin=null, destId=null, routes=null, activeRoute='A';
+let origin=null, destId=null, routes=null, activeRoute='A', sameLocNoted=false;
 let travelMode='walk', journeyOn=false;
 const fmtM=u=>Math.round(u*CONFIG.metersPerUnit/5)*5;
 const speedFor=()=>travelMode==='vehicle'?(CONFIG.vehicleMetersPerMinute||200):CONFIG.walkMetersPerMinute;
 const fmtMin=u=>Math.max(1,Math.round(u*CONFIG.metersPerUnit/speedFor()));
 const modeWord=()=>travelMode==='vehicle'?'by car/bike':'walk';
 
+/* Guests sometimes end up asking to go exactly where they already are — the
+   same landmark picked as both start and end, or a GPS fix that lands right
+   on the destination. That is not "no route found", so it gets its own
+   message instead of the pathfinder silently having nothing to draw. */
+function sameLocation(){
+  if(!origin||!destId)return false;
+  if(origin.id&&origin.id===destId)return true;
+  const dp=POIS.find(p=>p.id===destId); if(!dp)return false;
+  const p1=origin.raw||origin.pt, p2=poiPt(dp);
+  const thresholdUnits=8/(CONFIG.metersPerUnit||1);   // ~8 metres
+  return dist(p1,p2)<thresholdUnits;
+}
 function computeRoutes(){
   routes=null;
   if(!origin||!destId)return;
+  if(sameLocation()){
+    renderSetupCard();
+    if(!sameLocNoted){
+      sameLocNoted=true;
+      if(window.Siri)Siri.sayNav('You are on the same location.');
+    }
+    return;
+  }
+  sameLocNoted=false;
   const dp=POIS.find(p=>p.id===destId);
   const adj=origin.snap?adjWithMe(origin.snap):BASE_ADJ;
   const src=origin.snap?'__me':origin.gnode;
@@ -1066,6 +1087,9 @@ function renderSetupCard(){
     const act=routes[activeRoute];
     $('rMeta').textContent=`${fmtM(act.trueLen)} m · ~${fmtMin(act.trueLen)} min ${modeWord()}`;
     $('startBtn').disabled=false;
+  }else if(origin&&sameLocation()){
+    $('rMeta').textContent='You are on the same location.';
+    $('startBtn').disabled=true;
   }else{
     $('rMeta').textContent='Set where you are (step 1) to see distance & time';
     $('startBtn').disabled=true;
@@ -1119,7 +1143,7 @@ function setLocLine(label){
 }
 function setOriginPoi(id){
   const p=POIS.find(q=>q.id===id);if(!p)return;
-  origin={gnode:gnodeOf(p),pt:poiPt(p),label:p.name,snap:null};
+  origin={id:p.id,gnode:gnodeOf(p),pt:poiPt(p),label:p.name,snap:null};
   meAcc.setAttribute('r',0);
   if(originSelect.value!==id)originSelect.setValue(id);
   showMe(origin.pt);setLocLine(p.name);
@@ -1305,7 +1329,7 @@ const destSelect=makeCustomSelect({
 });
 
 /* ═══════════ GPS (optional, needs CONFIG setup) ═══════════ */
-let gpsWatch=null, gpsFit=null, gpsApproxNoted=false;
+let gpsWatch=null, gpsFit=null, gpsApproxNoted=false, gpsOutsideNoted=false;
 function buildGpsFit(){
   // keep only references that have real coordinates AND a matching POI on this map
   const refs=(CONFIG.gps.refs||[]).filter(r=>r&&r.lat&&r.lng&&POIS.find(p=>p.id===r.id));
@@ -1372,6 +1396,7 @@ function startGPS(){
   if(!window.isSecureContext){toast('GPS works only on https or localhost. On this link, please use "Near a landmark" or "Tap the map".');return;}
   gpsFit=CONFIG.gps.enabled?buildGpsFit():null;
   if(gpsWatch!==null)navigator.geolocation.clearWatch(gpsWatch);
+  gpsOutsideNoted=false;
   toast('Getting your GPS position…',2500);
   gpsWatch=navigator.geolocation.watchPosition(pos=>{
     const {latitude:lat,longitude:lng,accuracy}=pos.coords;
@@ -1388,10 +1413,17 @@ function startGPS(){
       // main gate — tolerate that; only reject when clearly well outside the resort.
       const tol=gpsFit.approx?45:6;
       if(outM>tol){
-        toast('Your GPS shows you outside the resort map. If you are inside the resort, the map may just need its GPS reference points set.');
+        // Said once per GPS attempt, not on every position update — otherwise
+        // a guest standing just outside the gate hears it every few seconds.
+        if(!gpsOutsideNoted){
+          gpsOutsideNoted=true;
+          toast('You are outside the resort. GPS only works once you are inside the resort boundary.');
+          if(window.Siri)Siri.sayNav('You are outside the resort.');
+        }
         return;
       }
     }
+    gpsOutsideNoted=false;
     if(gpsFit.approx&&!gpsApproxNoted){gpsApproxNoted=true;
       toast('Showing your approximate position. Accuracy improves once this resort has two GPS reference points.',5000);}
     if(origin&&origin.snap&&origin.raw&&dist(origin.raw,pt)<3)return; // ignore tiny jitter (~2 m)
@@ -1497,8 +1529,14 @@ function askLandmark(){ convo='landmark'; setMode('landmark');
 /* "take me to X" always locates the guest by GPS unless we already know where
    they are — that is the default the guest asked for. */
 function beginRouteTo(p){
+  // setDest() runs computeRoutes(), which already speaks "You are on the same
+  // location." itself when that is true — nothing extra to say here, just
+  // skip asking a travel mode that would never be usable.
   destSelect.setValue(p.id); setDest(p.id);
-  if(origin){ askTravelMode(); return; }
+  if(origin){
+    if(sameLocation()){ convo='idle'; return; }
+    askTravelMode(); return;
+  }
   voiceAwaitingFix=true; convo='idle'; setMode('gps');
   Siri.speak(`Setting route to ${p.name}. Finding your location with G P S.`);
 }
@@ -1507,7 +1545,11 @@ function voiceOnOriginReady(){
   if(!window.Siri||!Siri.enabled)return;
   if(!voiceAwaitingFix)return;
   voiceAwaitingFix=false;
-  if(destId)askTravelMode(); else askDestination();
+  if(!destId){ askDestination(); return; }
+  // Same reasoning as beginRouteTo(): the position update just taken already
+  // ran computeRoutes(), which already announced it.
+  if(sameLocation()){ convo='idle'; return; }
+  askTravelMode();
 }
 
 /* ── everything she can answer ──────────────────────────────────
@@ -1639,6 +1681,7 @@ function siriCommand(said,alts){
   if(any(/\b(start|begin|go now|lets go|let us go|navigate now)\b/)&&!/\bstart(ing)? (point|from)\b/.test(t)){
     if(journeyOn){Siri.speak('We are already on the way.');return true;}
     if(!destId){askDestination();return true;}
+    if(sameLocation()){Siri.speak('You are on the same location.');return true;}
     if(!routes){Siri.speak('I still need to know where you are. Say, use G P S, or, I am near a landmark.');return true;}
     convo='idle';startJourney();return true;
   }
@@ -1650,6 +1693,7 @@ function siriCommand(said,alts){
     travelMode=veh?'vehicle':'walk';
     document.querySelectorAll('#travelModes button').forEach(x=>x.classList.toggle('on',x.dataset.tmode===travelMode));
     if(journeyOn)renderRouteCard();else renderSetupCard();
+    if(sameLocation()){Siri.speak('You are on the same location.');return true;}
     if(!routes){Siri.speak('I still need to know where you are. Say, use G P S, or, I am near a landmark.');return true;}
     startJourney();return true;
   }
@@ -1657,9 +1701,13 @@ function siriCommand(said,alts){
     const p=findPOI();
     if(p){
       voiceAwaitingFix=false;
-      setOriginPoi(p.id);
+      setOriginPoi(p.id);   // computeRoutes() inside already announces a same-location match
       Siri.speak(`Good, you are near ${p.name}.`);
-      setTimeout(()=>{ if(destId)askTravelMode(); else askDestination(); },900);
+      setTimeout(()=>{
+        if(!destId){ askDestination(); return; }
+        if(sameLocation())return;
+        askTravelMode();
+      },900);
       return true;
     }
     Siri.speak('I did not recognise that landmark. You can say, for example, reception, or the swimming pool.');
@@ -1668,7 +1716,10 @@ function siriCommand(said,alts){
   if(convo==='dest'){
     const p=findPOI();
     if(p){ convo='idle'; destSelect.setValue(p.id); setDest(p.id);
-      if(origin)askTravelMode(); else { voiceAwaitingFix=true; setMode('gps');
+      // setDest() just ran computeRoutes(), which already announces a
+      // same-location match — nothing extra to say here.
+      if(origin){ if(!sameLocation())askTravelMode(); }
+      else{ voiceAwaitingFix=true; setMode('gps');
         Siri.speak(`Setting route to ${p.name}. Finding your location with G P S.`); }
       return true; }
     Siri.speak('I did not catch that place. You can say, for example, the swimming pool, or reception.');
