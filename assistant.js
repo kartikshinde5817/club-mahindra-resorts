@@ -22,6 +22,13 @@
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 const synth = window.speechSynthesis;
 
+/* Phones and laptops run completely different speech engines, and the phone
+   ones need different handling to sound the same — see _pickVoice and _tone. */
+const UA         = navigator.userAgent||'';
+const IS_ANDROID = /android/i.test(UA);
+const IS_MOBILE  = IS_ANDROID || /iphone|ipad|ipod/i.test(UA)
+                || (/Macintosh/.test(UA) && navigator.maxTouchPoints>1);   // iPad poses as a Mac
+
 /* Two independent switches, because they answer different needs:
      cmr_voice     — the conversational assistant (microphone, wake word,
                      questions & answers). OFF unless the guest turns it on.
@@ -100,7 +107,11 @@ const Siri = {
       try{ synth.addEventListener('voiceschanged',fin,{once:true}); }catch(e){}
       const prev=synth.onvoiceschanged;
       synth.onvoiceschanged=()=>{ try{prev&&prev();}catch(e){} fin(); };
-      setTimeout(fin,1200);            // never hang on a browser that stays silent
+      /* Never hang on a browser that stays silent — but give phones longer:
+         Android populates the list well after page load, and giving up early
+         means she greets in the browser's DEFAULT voice and only switches to
+         the chosen one later, which is heard as "the voice keeps changing". */
+      setTimeout(fin, IS_MOBILE?3000:1200);
     });
   },
 
@@ -186,12 +197,27 @@ const Siri = {
       this.audioBlocked=false; this._paint();
       opts.onStart&&opts.onStart();
     };
-    u.onend = u.onerror = ()=>{ this.speaking=false; this._resumeRecog(); opts.onEnd&&opts.onEnd(); };
+    u.onend = u.onerror = ()=>{
+      this.speaking=false; clearInterval(this._keepAlive); this._keepAlive=null;
+      this._resumeRecog(); opts.onEnd&&opts.onEnd();
+    };
     try{
       synth.speak(u);
       // Chrome sometimes parks the queue paused (notably after a navigation).
       if(synth.paused){ try{ synth.resume(); }catch(e){} }
+      /* Chrome on Android also parks it mid-sentence on longer lines, which
+         sounds like she stalled halfway. Nudging the queue keeps it flowing. */
+      clearInterval(this._keepAlive);
+      this._keepAlive=setInterval(()=>{
+        if(!synth.speaking&&!synth.pending){ clearInterval(this._keepAlive); this._keepAlive=null; return; }
+        if(synth.paused){ try{ synth.resume(); }catch(e){} }
+      },3000);
     }catch(e){ this.speaking=false; this._resumeRecog(); }
+    /* How long to wait before deciding audio was blocked. A phone engine can
+       sit silent for a couple of seconds before the first word — and while it
+       does, Chrome reports speaking AND pending as false. The old 1.5s window
+       believed that, cancelled, and started the line again: that restart is
+       the stutter heard on phones. Give the phone room to answer. */
     setTimeout(()=>{
       if(started||settled) return;
       if(synth.speaking||synth.pending) return;      // still warming up — let it run
@@ -204,7 +230,7 @@ const Siri = {
       this.audioBlocked=true;
       this._paint();
       opts.onBlocked&&opts.onBlocked();
-    },1500);
+    }, IS_MOBILE?4000:1500);
   },
 
   /* ── choosing the voice ─────────────────────────────────────────
@@ -235,13 +261,27 @@ const Siri = {
       if(new RegExp('(^|[^a-z])'+p.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'([^a-z]|$)').test(N))
         return PREFERRED.length-i;
     }
+    /* Android is the odd one out: its engines do not use human names at all.
+       Chrome on a phone reports things like "English (India)", "en-in-x-ene-
+       local" or "English India Female" — none of which match a name above, so
+       every voice used to score identically and the winner was whichever the
+       OS happened to list first. That is why she sounds like a different
+       person on different phones. Rank those by locale instead — mobile only,
+       so the laptop's proven choice is not disturbed, and low enough that it
+       never outranks a real Apple/Microsoft voice on a phone either. */
+    if(!IS_MOBILE) return 0;
+    if(/english.*india|(^|[^a-z])en[-_ ]?in([^a-z]|$)/.test(N))            return 3;
+    if(/english.*(uk|united kingdom)|(^|[^a-z])en[-_ ]?gb([^a-z]|$)/.test(N)) return 2;
+    if(/english.*(us|united states)|(^|[^a-z])en[-_ ]?us([^a-z]|$)/.test(N)) return 1;
     return 0;
   },
   _pickVoice(){
     if(!synth) return;
     const vs = synth.getVoices()||[];
     if(!vs.length) return;                        // Brave hides the list — use the default
-    const female = /female|woman|samantha|ava|allison|susan|zoe|serena|karen|tessa|moira|fiona|zira|aria|jenny|sonia|libby|michelle|neerja|heera|veena|salli|joanna|kalpana|lekha/i;
+    /* `#female_1` / `-fem-` are how Android's engines mark gender when the
+       voice has no human name at all. */
+    const female = /female|woman|#fem|[-_]fem\b|samantha|ava|allison|susan|zoe|serena|karen|tessa|moira|fiona|zira|aria|jenny|sonia|libby|michelle|neerja|heera|veena|salli|joanna|kalpana|lekha/i;
     const male   = /male\b|man\b|rishi|daniel|alex|fred|oliver|ryan|guy|david|mark|prabhat|hemant/i;
     /* "compact"/"eloquence" are the old robotic Apple voices; novelty voices
        (Albert, Bad News, …) are jokes. Both are the opposite of soft. */
@@ -257,10 +297,20 @@ const Siri = {
       if(female.test(v.name)) s+=5;
       if(male.test(v.name)) s-=6;
       if(harsh.test(v.name)) s-=30;
-      if(v.localService===false) s+=1;            // cloud/neural voices sound better
+      /* A network voice fetches its audio from a server for EVERY line. On a
+         laptop that is invisible; on a phone on resort WiFi it is exactly the
+         pause guests hear before she starts talking. So on mobile an offline
+         voice wins outright — Android's local voices are good enough that
+         answering instantly is worth more than the last bit of polish. */
+      if(IS_MOBILE) s += (v.localService===false ? -12 : 6);
+      else if(v.localService===false) s+=1;       // cloud/neural voices sound better
       return s;
     };
-    const best = vs.slice().sort((a,b)=>score(b)-score(a))[0] || null;
+    /* Tie-break by name so a given phone picks the SAME voice on every page
+       and every reload — getVoices() order is not stable while the engine
+       warms up, and she must not change person between screens. */
+    const best = vs.slice().sort((a,b)=>
+      score(b)-score(a) || String(a.name).localeCompare(String(b.name)))[0] || null;
     if(best && score(best) <= 0) return;          // nothing decent — leave the default alone
     this.voice = best;
   },
@@ -271,6 +321,11 @@ const Siri = {
      makes a voice sound "soft" — not volume. */
   _tone(){
     const n=(this.voice&&this.voice.name||'').toLowerCase();
+    /* Android reads the SAME number markedly slower than a desktop engine, and
+       the phone's own system speech-rate setting multiplies in on top — which
+       is why she drags on a phone while sounding right on the laptop. A higher
+       number here LANDS at the laptop's pace; it is not "fast". */
+    if(IS_ANDROID)           return {rate:1.06, pitch:1.00};
     if(/google/.test(n))     return {rate:0.92, pitch:0.96};
     if(/microsoft/.test(n))  return {rate:0.95, pitch:1.00};
     return {rate:0.95, pitch:1.00};               // Apple, Samsung, and unknown engines
@@ -531,8 +586,14 @@ const Siri = {
         const t=this._tone();
         console.log('[Siri] ready · speech:'+(!!synth)+' mic:'+(!!SR)
           +' qa:'+this.enabled+' nav:'+this.navVoice+' secure:'+window.isSecureContext
-          +' voice:'+(this.voice?this.voice.name+' ('+this.voice.lang+')':'browser default')
+          +' mobile:'+IS_MOBILE
+          +' voice:'+(this.voice?this.voice.name+' ('+this.voice.lang+')'
+                      +(this.voice.localService===false?' [network]':' [offline]')
+                     :'browser default')
           +' rate:'+t.rate+' pitch:'+t.pitch);
+        // Full list, so a phone that still sounds wrong can be diagnosed on the spot
+        console.log('[Siri] voices:', (synth.getVoices()||[])
+          .map(v=>v.name+'|'+v.lang+(v.localService===false?'|net':'|local')));
       });
     }catch(e){}
   },
